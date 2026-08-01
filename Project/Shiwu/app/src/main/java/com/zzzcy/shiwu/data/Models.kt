@@ -2,6 +2,7 @@ package com.zzzcy.shiwu.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.DecimalFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -11,6 +12,14 @@ val DateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 fun Long.formatDate(): String = LocalDate.ofEpochDay(this).format(DateFmt)
 
 fun LocalDate.formatDate(): String = format(DateFmt)
+
+/** 价格格式化：保留最多 2 位小数并去掉多余的 0，带千分位分隔（9.9 → "9.9"，1000.5 → "1,000.5"） */
+private val PriceFmt: DecimalFormat = DecimalFormat("#,##0.##").apply {
+    isGroupingUsed = true
+    roundingMode = java.math.RoundingMode.HALF_UP
+}
+
+fun Double.formatPrice(): String = PriceFmt.format(this)
 
 /** 物品清单（每份清单包含自己的物品与心愿） */
 data class InventoryList(

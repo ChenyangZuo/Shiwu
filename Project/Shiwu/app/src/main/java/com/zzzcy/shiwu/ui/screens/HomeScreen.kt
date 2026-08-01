@@ -67,7 +67,7 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.util.PhotoUtils
-import java.util.Locale
+import com.zzzcy.shiwu.data.formatPrice
 
 @Composable
 fun HomeScreen(
@@ -114,7 +114,7 @@ fun HomeScreen(
                         HeaderIconButton(Icons.Outlined.Share, "分享") {
                             val text = buildString {
                                 append("我的物品清单 · ${active.size} 件\n\n")
-                                active.forEach { append("• ${it.name}  ¥${"%,.0f".format(Locale.US, it.price)}\n") }
+                                active.forEach { append("• ${it.name}  ¥${it.price.formatPrice()}\n") }
                             }
                             val send = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -130,7 +130,7 @@ fun HomeScreen(
         item(span = { GridItemSpan(2) }) {
             OverviewCard(
                 label = "总价值 · CNY",
-                value = "%,.0f".format(Locale.US, stats.totalValue),
+                value = stats.totalValue.formatPrice(),
                 stats = listOf(
                     "物品总数" to "${stats.itemCount}件",
                     "日均总成本" to "¥${"%.1f".format(stats.avgDayCost)}",
@@ -371,7 +371,7 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
                         modifier = Modifier.padding(end = 1.dp, bottom = 1.dp)
                     )
                     Text(
-                        text = "%,.0f".format(Locale.US, item.price),
+                        text = item.price.formatPrice(),
                         fontFamily = NumFamily,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,

@@ -70,7 +70,7 @@ import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.Locale
+import com.zzzcy.shiwu.data.formatPrice
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -176,7 +176,7 @@ fun ItemDetailScreen(
 
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DetailStat("价格", "¥${"%,.0f".format(Locale.US, item.price)}", Modifier.weight(1f))
+                    DetailStat("价格", "¥${item.price.formatPrice()}", Modifier.weight(1f))
                     DetailStat("购入日期", item.purchaseDate.formatDate(), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))

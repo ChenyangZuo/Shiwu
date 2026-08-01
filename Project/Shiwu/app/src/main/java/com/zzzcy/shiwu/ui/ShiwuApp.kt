@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,6 +74,7 @@ fun ShiwuApp() {
     var showTheme by rememberSaveable { mutableStateOf(false) }
     var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
+    var formSession by rememberSaveable { mutableStateOf(0) }
     var showNicknameSetup by remember { mutableStateOf(ShiwuRepository.needsNicknameSetup) }
 
     // 当前清单无效（如全部清单均被锁定）时，自动打开清单面板选择/解锁
@@ -96,6 +98,28 @@ fun ShiwuApp() {
         formKind = null
         editingItemId = null
         editingWishId = null
+    }
+
+    /** 打开物品表单：editId 为 null 表示新增，否则为编辑；每次打开递增会话号，强制重置表单状态 */
+    fun openItemForm(editId: Long?, direct: Boolean = false) {
+        editingWishId = null
+        editingItemId = editId
+        formContentWishId.value = null
+        formContentItemId.value = editId
+        formKind = FormKind.ITEM
+        formDirect = direct
+        formSession++
+    }
+
+    /** 打开心愿表单：editId 为 null 表示新增 */
+    fun openWishForm(editId: Long?) {
+        editingItemId = null
+        editingWishId = editId
+        formContentItemId.value = null
+        formContentWishId.value = editId
+        formKind = FormKind.WISH
+        formDirect = false
+        formSession++
     }
 
     // 返回手势优先级：表单 > 详情 > 回收站 > 默认
@@ -140,24 +164,12 @@ fun ShiwuApp() {
                         listName = lists.firstOrNull { it.id == currentListId }?.name ?: "选择清单",
                         onListClick = { showListSwitcher = true },
                         onItemClick = { detailItemId = it },
-                        onAddClick = {
-                            formKind = FormKind.ITEM
-                            editingItemId = null
-                            formDirect = false
-                        }
+                        onAddClick = { openItemForm(null) }
                     )
                     DockTab.WISHLIST -> WishlistScreen(
                         wishes = currentWishes,
-                        onWishClick = {
-                            formKind = FormKind.WISH
-                            editingWishId = it
-                            formDirect = false
-                        },
-                        onAddClick = {
-                            formKind = FormKind.WISH
-                            editingWishId = null
-                            formDirect = false
-                        },
+                        onWishClick = { openWishForm(it) },
+                        onAddClick = { openWishForm(null) },
                         onPurchased = { newItemId ->
                             formKind = null
                             detailItemId = newItemId
@@ -187,16 +199,8 @@ fun ShiwuApp() {
                         .padding(end = 24.dp, bottom = 96.dp),
                     onClick = {
                         when (currentTab) {
-                            DockTab.HOME -> {
-                                formKind = FormKind.ITEM
-                                editingItemId = null
-                                formDirect = false
-                            }
-                            DockTab.WISHLIST -> {
-                                formKind = FormKind.WISH
-                                editingWishId = null
-                                formDirect = false
-                            }
+                            DockTab.HOME -> openItemForm(null)
+                            DockTab.WISHLIST -> openWishForm(null)
                             else -> Unit
                         }
                     }
@@ -231,9 +235,7 @@ fun ShiwuApp() {
                     onBack = { detailItemId = null },
                     onEdit = {
                         // 保持详情页在表单下层打开，返回时直接回到详情
-                        formKind = FormKind.ITEM
-                        editingItemId = id
-                        formDirect = true
+                        openItemForm(id, direct = true)
                     }
                 )
             }
@@ -319,21 +321,23 @@ fun ShiwuApp() {
                 ) + fadeOut(tween(durationMillis = 180))
             }
         ) {
-            when (formContentKind.value) {
-                FormKind.ITEM -> ItemFormScreen(
-                    editingItem = formContentItemId.value?.let { ShiwuRepository.itemById(it) },
-                    onClose = ::closeForm,
-                    onDeleted = { detailItemId = null },
-                    onSaved = { id ->
-                        closeForm()
-                        detailItemId = id
-                    }
-                )
-                FormKind.WISH -> WishFormScreen(
-                    editingWish = formContentWishId.value?.let { ShiwuRepository.wishById(it) },
-                    onClose = ::closeForm
-                )
-                null -> Unit
+            key(formSession) {
+                when (formContentKind.value) {
+                    FormKind.ITEM -> ItemFormScreen(
+                        editingItem = formContentItemId.value?.let { ShiwuRepository.itemById(it) },
+                        onClose = ::closeForm,
+                        onDeleted = { detailItemId = null },
+                        onSaved = { id ->
+                            closeForm()
+                            detailItemId = id
+                        }
+                    )
+                    FormKind.WISH -> WishFormScreen(
+                        editingWish = formContentWishId.value?.let { ShiwuRepository.wishById(it) },
+                        onClose = ::closeForm
+                    )
+                    null -> Unit
+                }
             }
         }
 

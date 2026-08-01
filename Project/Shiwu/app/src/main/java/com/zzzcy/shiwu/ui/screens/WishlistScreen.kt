@@ -59,7 +59,7 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
-import java.util.Locale
+import com.zzzcy.shiwu.data.formatPrice
 
 @Composable
 fun WishlistScreen(
@@ -85,13 +85,13 @@ fun WishlistScreen(
             actions = emptyList()
         )
 
-        Column(Modifier.padding(horizontal = 18.dp)) {
+        Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp)) {
             OverviewCard(
                 label = "预计总费用 · 待购",
-                value = "%,.0f".format(Locale.US, total),
+                value = total.formatPrice(),
                 stats = listOf(
                     "心愿数" to "${list.size}件",
-                    "已攒预算" to "¥${"%,.0f".format(Locale.US, saved)}",
+                    "已攒预算" to "¥${saved.formatPrice()}",
                     "完成度" to "$completion%"
                 ),
                 dark = true
@@ -222,7 +222,7 @@ private fun WishRow(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = wish.note.ifBlank { priorityNote(wish.priority) },
+                        text = wish.note,
                         fontSize = 10.5.sp,
                         color = Muted,
                         letterSpacing = 0.2.sp
@@ -231,10 +231,8 @@ private fun WishRow(
             }
             Spacer(Modifier.width(6.dp))
             Column(horizontalAlignment = Alignment.End) {
-                if (wish.priority != "MEDIUM") {
-                    PriorityBadge(wish.priority)
-                    Spacer(Modifier.height(6.dp))
-                }
+                PriorityBadge(label = priorityLabel(wish.priority), isDream = wish.priority == "DREAM")
+                Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = "¥",
@@ -244,7 +242,7 @@ private fun WishRow(
                         modifier = Modifier.padding(end = 1.dp, bottom = 1.dp)
                     )
                     Text(
-                        text = "%,.0f".format(Locale.US, wish.price),
+                        text = wish.price.formatPrice(),
                         fontFamily = NumFamily,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -272,17 +270,18 @@ private fun WishRow(
     }
 }
 
-private fun priorityNote(priority: String): String = when (priority) {
-    "HIGH" -> "高优先级"
-    "DREAM" -> "长期目标"
-    else -> "待定"
+/** 优先级展示文案，与录入表单保持一致 */
+private fun priorityLabel(priority: String): String = when (priority) {
+    "HIGH" -> "高"
+    "DREAM" -> "梦想"
+    else -> "中"
 }
 
 @Composable
-private fun PriorityBadge(text: String) {
-    val color = if (text == "DREAM") Danger else Warn
+private fun PriorityBadge(label: String, isDream: Boolean) {
+    val color = if (isDream) Danger else Warn
     Text(
-        text = "★ $text",
+        text = "★ $label",
         fontSize = 9.5.sp,
         fontWeight = FontWeight.SemiBold,
         fontFamily = NumFamily,
