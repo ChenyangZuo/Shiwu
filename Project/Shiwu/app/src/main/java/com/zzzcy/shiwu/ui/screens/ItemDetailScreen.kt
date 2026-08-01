@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +80,8 @@ fun ItemDetailScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val item = ShiwuRepository.itemById(itemId) ?: run {
+    val items by ShiwuRepository.items.collectAsState()
+    val item = items.firstOrNull { it.id == itemId } ?: run {
         onBack()
         return
     }
