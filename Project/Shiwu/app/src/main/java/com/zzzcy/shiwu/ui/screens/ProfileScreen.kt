@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.DarkMode
@@ -78,8 +77,6 @@ import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.util.PhotoUtils
 import com.zzzcy.shiwu.util.TransferZip
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -98,7 +95,6 @@ fun ProfileScreen(
     val activeCount = items.count { !it.deleted }
     val trashCount = items.count { it.deleted }
     val wishCount = wishes.count { !it.purchased }
-    val backupInfo = remember(items, wishes) { ShiwuRepository.backupInfo() }
 
     var showImportDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
@@ -220,17 +216,6 @@ fun ProfileScreen(
                         onClick = { showExportDialog = true }
                     ),
                     MenuRowData(
-                        "自动备份",
-                        "本地快照 · 点击立即备份",
-                        Icons.Outlined.CloudSync,
-                        null,
-                        badge = "已开启",
-                        onClick = {
-                            ShiwuRepository.createBackup()
-                            Toast.makeText(context, "备份完成", Toast.LENGTH_SHORT).show()
-                        }
-                    ),
-                    MenuRowData(
                         "回收站",
                         "$trashCount 件 · 可恢复或彻底删除",
                         Icons.Outlined.Delete,
@@ -239,12 +224,6 @@ fun ProfileScreen(
                         onClick = onOpenTrash
                     )
                 )
-            )
-
-            StorageCard(
-                count = backupInfo.count,
-                sizeBytes = backupInfo.totalSizeBytes,
-                lastAt = backupInfo.lastBackupAt
             )
 
             MenuGroup(
@@ -595,79 +574,3 @@ private fun MenuGroup(
         }
     }
 }
-
-@Composable
-private fun StorageCard(count: Int, sizeBytes: Long, lastAt: Long?) {
-    CardSurface(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-        Column(Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "本地备份",
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Fg
-                )
-                Text(
-                    text = "$count 份快照 · ${formatSize(sizeBytes)}",
-                    fontFamily = NumFamily,
-                    fontSize = 11.sp,
-                    color = Muted,
-                    letterSpacing = 0.4.sp
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(Bg2, RoundedCornerShape(50))
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth((count % 10).coerceAtMost(10) / 10f)
-                        .height(6.dp)
-                        .background(Brush.horizontalGradient(listOf(Accent, Accent2)), RoundedCornerShape(50))
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = if (lastAt != null) "上次备份 ${formatTime(lastAt)}" else "暂无备份",
-                    fontSize = 10.5.sp,
-                    color = Muted,
-                    letterSpacing = 0.2.sp
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = Accent,
-                        modifier = Modifier.size(11.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "仅保存在本机",
-                        fontSize = 10.5.sp,
-                        color = Accent
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun formatSize(bytes: Long): String = when {
-    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
-    bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
-    else -> "$bytes B"
-}
-
-private fun formatTime(millis: Long): String =
-    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(millis))

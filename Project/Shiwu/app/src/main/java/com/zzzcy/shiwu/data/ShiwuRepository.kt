@@ -322,7 +322,7 @@ object ShiwuRepository {
     fun topDayCosts(limit: Int = 3, listId: Long = _currentListId.value): List<Item> =
         itemsOf(listId).sortedByDescending { it.dayCost }.take(limit)
 
-    // ---------- 导入导出 / 备份 ----------
+    // ---------- 导入导出 ----------
 
     /** 导出全部数据（与存储文件同格式） */
     fun exportJson(): String = synchronized(lock) {
@@ -482,35 +482,6 @@ object ShiwuRepository {
             .distinct()
             .mapNotNull { runCatching { File(it) }.getOrNull() }
             .filter { it.exists() && it.isFile }
-    }
-
-    data class BackupInfo(
-        val count: Int,
-        val totalSizeBytes: Long,
-        val lastBackupAt: Long?
-    )
-
-    fun backupInfo(): BackupInfo {
-        val dir = backupDir() ?: return BackupInfo(0, 0, null)
-        val files = dir.listFiles { f -> f.extension == "json" }?.toList() ?: emptyList()
-        return BackupInfo(
-            count = files.size,
-            totalSizeBytes = files.sumOf { it.length() },
-            lastBackupAt = files.maxOfOrNull { it.lastModified() }
-        )
-    }
-
-    /** 创建一份备份快照 */
-    fun createBackup(): Long = synchronized(lock) {
-        val dir = backupDir() ?: return 0L
-        val f = File(dir, "backup_${System.currentTimeMillis()}.json")
-        f.writeText(exportJson())
-        f.length()
-    }
-
-    private fun backupDir(): File? {
-        val base = dataFile?.parentFile ?: return null
-        return File(base, "backups").apply { mkdirs() }
     }
 
     // ---------- 持久化 ----------
