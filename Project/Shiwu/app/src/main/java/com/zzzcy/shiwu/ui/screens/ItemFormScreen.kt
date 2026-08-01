@@ -97,7 +97,8 @@ val knownCategories = listOf("数码", "服饰", "阅读", "家居", "收藏", "
 fun ItemFormScreen(
     editingItem: Item?,
     onClose: () -> Unit,
-    onSaved: (Long) -> Unit
+    onSaved: (Long) -> Unit,
+    onDeleted: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -420,7 +421,10 @@ fun ItemFormScreen(
                 text = { Text("「${name}」将移入回收站，可稍后恢复。") },
                 confirmButton = {
                     TextButton(onClick = {
-                        editingItem?.let { ShiwuRepository.softDeleteItem(it.id) }
+                        editingItem?.let {
+                            ShiwuRepository.softDeleteItem(it.id)
+                            onDeleted(it.id)
+                        }
                         showDeleteConfirm = false
                         onClose()
                     }) { Text("移入回收站", color = Danger) }

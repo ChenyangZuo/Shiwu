@@ -187,7 +187,7 @@ fun ShiwuApp() {
                     itemId = id,
                     onBack = { detailItemId = null },
                     onEdit = {
-                        detailItemId = null
+                        // 保持详情页在表单下层打开，返回时直接回到详情
                         formKind = FormKind.ITEM
                         editingItemId = id
                         formDirect = true
@@ -235,6 +235,7 @@ fun ShiwuApp() {
                 FormKind.ITEM -> ItemFormScreen(
                     editingItem = editingItemId?.let { ShiwuRepository.itemById(it) },
                     onClose = ::closeForm,
+                    onDeleted = { detailItemId = null },
                     onSaved = { id ->
                         closeForm()
                         detailItemId = id
