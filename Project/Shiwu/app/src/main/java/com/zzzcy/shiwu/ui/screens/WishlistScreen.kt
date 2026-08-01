@@ -17,10 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ShoppingBag
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -48,7 +46,6 @@ import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.Wish
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
-import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.components.OverviewCard
 import com.zzzcy.shiwu.ui.components.SectionHead
 import com.zzzcy.shiwu.ui.theme.Accent
@@ -86,10 +83,7 @@ fun WishlistScreen(
         AppHeader(
             eyebrow = "Wishlist",
             title = "愿望清单",
-            actions = listOf(
-                { HeaderIconButton(Icons.Outlined.Tune, "筛选") },
-                { HeaderIconButton(Icons.AutoMirrored.Outlined.Sort, "排序") }
-            )
+            actions = emptyList()
         )
 
         Column(Modifier.padding(horizontal = 18.dp)) {
