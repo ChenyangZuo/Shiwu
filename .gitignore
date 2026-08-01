@@ -8,6 +8,9 @@
 *.log
 *.tmp
 
+# CSV 导入/导出产生的数据目录（不入库）
+import_*/
+
 # 签名文件与密钥配置（不入库）
 *.jks
 *.keystore
