@@ -303,19 +303,26 @@ private fun ProfileHero(
                 color = Fg
             )
             Spacer(Modifier.height(4.dp))
+            Text(
+                text = "使用 拾物 已 $memberDays 天",
+                fontSize = 11.5.sp,
+                color = Muted,
+                letterSpacing = 0.2.sp
+            )
+            Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "使用 拾物 已 $memberDays 天 · 点击修改昵称",
-                    fontSize = 11.5.sp,
-                    color = Muted,
-                    letterSpacing = 0.2.sp
-                )
-                Spacer(Modifier.width(4.dp))
                 Icon(
                     imageVector = Icons.Outlined.Edit,
                     contentDescription = "修改昵称",
                     tint = Muted2,
                     modifier = Modifier.size(11.dp)
+                )
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    text = "点击修改昵称",
+                    fontSize = 10.5.sp,
+                    color = Muted2,
+                    letterSpacing = 0.2.sp
                 )
             }
         }
