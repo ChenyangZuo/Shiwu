@@ -45,6 +45,11 @@ object ShiwuRepository {
 
     private val _userName = MutableStateFlow("林川")
     val userName: StateFlow<String> = _userName.asStateFlow()
+    private var nicknameSet = false
+
+    /** 是否需要首次昵称设置（新装 App 首次启动时展示引导） */
+    val needsNicknameSetup: Boolean
+        get() = !nicknameSet
 
     fun init(context: Context) {
         synchronized(lock) {
@@ -52,6 +57,13 @@ object ShiwuRepository {
             dataFile = File(context.filesDir, "shiwu_data.json")
             prefs = context.getSharedPreferences("shiwu_prefs", Context.MODE_PRIVATE)
             _userName.value = prefs?.getString("user_name", "林川") ?: "林川"
+            nicknameSet = prefs?.getBoolean("nickname_set", false) ?: false
+            // 老用户已有昵称但无标记：视为已设置，避免升级后弹引导
+            val hasLegacyName = prefs?.contains("user_name") == true
+            if (hasLegacyName && !nicknameSet) {
+                nicknameSet = true
+                prefs?.edit()?.putBoolean("nickname_set", true)?.apply()
+            }
             _themeMode.value = prefs?.getString("theme_mode", "system") ?: "system"
             firstLaunchDay = prefs?.getLong("first_launch_day", -1L) ?: -1L
             if (firstLaunchDay < 0) {
@@ -129,7 +141,20 @@ object ShiwuRepository {
         val trimmed = name.trim()
         if (trimmed.isEmpty() || trimmed == _userName.value) return
         _userName.value = trimmed
-        prefs?.edit()?.putString("user_name", trimmed)?.apply()
+        prefs?.edit()?.putString("user_name", trimmed)?.putBoolean("nickname_set", true)?.apply()
+        nicknameSet = true
+    }
+
+    /** 首次启动设置昵称（引导流程专用，确保落盘） */
+    fun setupNickname(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        _userName.value = trimmed
+        prefs?.edit()
+            ?.putString("user_name", trimmed)
+            ?.putBoolean("nickname_set", true)
+            ?.apply()
+        nicknameSet = true
     }
 
     /** 设置主题模式：light / dark / system */
@@ -582,34 +607,14 @@ object ShiwuRepository {
         f.writeText(root.toString(1))
     }
 
-    /** 首次启动写入示例数据（迁移自第一版 MockData） */
+    /** 首次启动初始化：只建默认清单与分类，不写入任何假数据 */
     private fun seed() {
-        val today = LocalDate.now().toEpochDay()
-        fun daysAgo(days: Long) = today - days
-
-        val items = listOf(
-            Item(1, "Sony WH-1000XM5 无线降噪耳机", "数码", 2899.0, daysAgo(124)),
-            Item(2, "Kindle Paperwhite 11代", "阅读", 1098.0, daysAgo(287)),
-            Item(3, "iPad Air M2 11 寸 256G", "数码", 4799.0, daysAgo(56)),
-            Item(4, "The North Face 冲锋衣", "服饰", 1890.0, daysAgo(412)),
-            Item(
-                5, "小米手环 8 NFC", "数码", 249.0, daysAgo(400),
-                retired = true, retirementDate = daysAgo(30)
-            )
-        )
-        val wishes = listOf(
-            Wish(1, "MacBook Pro 14\" M4 Pro", "数码", 14999.0, "HIGH", note = "预计 11月"),
-            Wish(2, "DJI Pocket 3 全能套装", "影像", 4499.0, "MEDIUM", savedAmount = 3200.0, note = "已攒 ¥3,200"),
-            Wish(3, "一加 13 16+512G", "数码", 4499.0, "MEDIUM", note = "等待发布"),
-            Wish(4, "飞天茅台 53° 500ml", "收藏", 2499.0, "MEDIUM", note = "节日备礼"),
-            Wish(5, "徕卡 Q3 43 紧凑全幅", "影像", 46800.0, "DREAM", note = "长期目标")
-        )
-        nextItemId = 6
-        nextWishId = 6
+        nextItemId = 1
+        nextWishId = 1
         nextListId = 2
         _lists.value = listOf(InventoryList(1, "我的物品"))
-        _items.value = items
-        _wishes.value = wishes
+        _items.value = emptyList()
+        _wishes.value = emptyList()
         _categories.value = defaultCategories
         save()
     }

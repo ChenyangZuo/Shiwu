@@ -39,6 +39,7 @@ import com.zzzcy.shiwu.ui.screens.CategoryManagementScreen
 import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
 import com.zzzcy.shiwu.ui.screens.ListSwitcherScreen
+import com.zzzcy.shiwu.ui.screens.NicknameSetupScreen
 import com.zzzcy.shiwu.ui.screens.ProfileScreen
 import com.zzzcy.shiwu.ui.screens.StatsScreen
 import com.zzzcy.shiwu.ui.screens.TrashScreen
@@ -71,6 +72,7 @@ fun ShiwuApp() {
     var showTheme by rememberSaveable { mutableStateOf(false) }
     var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
+    var showNicknameSetup by remember { mutableStateOf(ShiwuRepository.needsNicknameSetup) }
 
     // 覆盖层内容在退出动画期间保留：visible 状态被置空时，动画仍能带着旧内容滑出
     val detailContentId = remember { mutableStateOf<Long?>(null) }
@@ -89,6 +91,9 @@ fun ShiwuApp() {
     }
 
     // 返回手势优先级：表单 > 详情 > 回收站 > 默认
+    BackHandler(enabled = showNicknameSetup) {
+        // 首次昵称引导不可跳过
+    }
     BackHandler(
         enabled = formKind != null || detailItemId != null || showTrash || showCategories || showTheme || showListSwitcher
     ) {
@@ -322,6 +327,16 @@ fun ShiwuApp() {
                 )
                 null -> Unit
             }
+        }
+
+        // 首次启动昵称引导（覆盖在最上层）
+        if (showNicknameSetup) {
+            NicknameSetupScreen(
+                onDone = { name ->
+                    ShiwuRepository.setupNickname(name)
+                    showNicknameSetup = false
+                }
+            )
         }
     }
 }
