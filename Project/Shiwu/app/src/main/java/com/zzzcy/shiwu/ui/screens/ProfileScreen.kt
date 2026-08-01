@@ -76,6 +76,7 @@ import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.util.PhotoUtils
+import com.zzzcy.shiwu.util.TransferZip
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,34 +100,82 @@ fun ProfileScreen(
     val wishCount = wishes.count { !it.purchased }
     val backupInfo = remember(items, wishes) { ShiwuRepository.backupInfo() }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val text = try {
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-            } catch (_: Exception) { null }
-            if (text != null) {
-                val count = ShiwuRepository.importJson(text)
-                Toast.makeText(context, "导入成功：$count 条记录", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "导入失败：文件无法读取", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
 
-    fun exportData() {
-        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val f = File(dir, "shiwu_export_${System.currentTimeMillis()}.json")
-        f.writeText(ShiwuRepository.exportJson())
+    fun shareFile(f: File, mime: String, title: String) {
         val uri = androidx.core.content.FileProvider.getUriForFile(context, PhotoUtils.FILE_PROVIDER_AUTHORITY, f)
         val send = Intent(Intent.ACTION_SEND).apply {
-            type = "application/json"
+            type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "导出数据"))
+        context.startActivity(Intent.createChooser(send, title))
     }
+
+    fun exportJson() {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_export_${System.currentTimeMillis()}.json")
+        f.writeText(ShiwuRepository.exportJson())
+        shareFile(f, "application/json", "导出 JSON")
+    }
+
+    fun exportCsv() {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_items_${System.currentTimeMillis()}.csv")
+        f.writeText(ShiwuRepository.exportCsv())
+        shareFile(f, "text/csv", "导出 CSV")
+    }
+
+    fun exportZip() {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_export_${System.currentTimeMillis()}.zip")
+        val ok = TransferZip.buildExportZip(ShiwuRepository.exportCsv(), ShiwuRepository.exportPhotoFiles(), f)
+        if (ok) {
+            shareFile(f, "application/zip", "导出 CSV + 照片")
+        } else {
+            Toast.makeText(context, "导出失败：无法打包 ZIP", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun shareTemplate() {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_import_template.csv")
+        f.writeText(ShiwuRepository.csvTemplate())
+        shareFile(f, "text/csv", "CSV 导入模板")
+    }
+
+    fun doImport(uri: Uri) {
+        val bytes = try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } catch (_: Exception) {
+            null
+        }
+        if (bytes == null) {
+            Toast.makeText(context, "导入失败：文件无法读取", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val isZip = bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
+        val isJson = bytes.firstOrNull() == '{'.code.toByte()
+        val count = when {
+            isZip -> {
+                val result = TransferZip.importZip(context, uri)
+                if (result != null) ShiwuRepository.importCsv(result.first, result.second) else -1
+            }
+            isJson -> ShiwuRepository.importJson(bytes.toString(Charsets.UTF_8))
+            else -> ShiwuRepository.importCsv(bytes.toString(Charsets.UTF_8))
+        }
+        if (count >= 0) {
+            val suffix = if (isZip) "（含照片）" else ""
+            Toast.makeText(context, "导入成功：$count 条记录$suffix", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "导入失败：ZIP 文件无法解析", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> uri?.let(::doImport) }
 
     Column(
         modifier = Modifier
@@ -158,17 +207,17 @@ fun ProfileScreen(
                 rows = listOf(
                     MenuRowData(
                         "导入物品",
-                        "从 JSON / CSV 备份恢复",
+                        "JSON / CSV / ZIP · 导入前可查看模板",
                         Icons.Outlined.Download,
                         Accent,
-                        onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }
+                        onClick = { showImportDialog = true }
                     ),
                     MenuRowData(
                         "导出数据",
-                        "JSON 完整备份，可分享",
+                        "CSV / CSV+照片 ZIP / JSON",
                         Icons.Outlined.Upload,
                         Accent,
-                        onClick = ::exportData
+                        onClick = { showExportDialog = true }
                     ),
                     MenuRowData(
                         "自动备份",
@@ -225,6 +274,61 @@ fun ProfileScreen(
         Spacer(Modifier.height(120.dp))
     }
 
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("导入物品") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "支持三种格式：\n· JSON：完整备份（含心愿单）\n· CSV：物品文字信息\n· ZIP：CSV + photos/ 照片文件夹\n\n建议先查看模板了解 CSV 列格式。",
+                        fontSize = 12.sp,
+                        color = Muted,
+                        lineHeight = 18.sp
+                    )
+                    ImportOption("查看 CSV 模板", "生成一份带示例行的模板文件") {
+                        shareTemplate()
+                    }
+                    ImportOption("选择文件导入", "JSON / CSV / ZIP") {
+                        showImportDialog = false
+                        importLauncher.launch(arrayOf("*/*"))
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("导出数据") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ImportOption("CSV（纯文字）", "Excel / WPS 可直接打开") {
+                        showExportDialog = false
+                        exportCsv()
+                    }
+                    ImportOption("CSV + 照片（ZIP）", "内含 items.csv 与 photos/ 照片") {
+                        showExportDialog = false
+                        exportZip()
+                    }
+                    ImportOption("JSON 完整备份", "含物品、心愿单、分类") {
+                        showExportDialog = false
+                        exportJson()
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
     if (showEditName) {
         AlertDialog(
             onDismissRequest = { showEditName = false },
@@ -259,6 +363,31 @@ fun ProfileScreen(
             dismissButton = {
                 TextButton(onClick = { showEditName = false }) { Text("取消") }
             }
+        )
+    }
+}
+
+@Composable
+private fun ImportOption(title: String, desc: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .background(Bg2)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg
+        )
+        Text(
+            text = desc,
+            fontSize = 11.sp,
+            color = Muted,
+            letterSpacing = 0.2.sp
         )
     }
 }

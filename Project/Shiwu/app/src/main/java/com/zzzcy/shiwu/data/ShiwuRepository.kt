@@ -7,9 +7,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import com.zzzcy.shiwu.util.csvEscape
+import com.zzzcy.shiwu.util.parseCsv
 import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.Locale
 
 /**
  * 本地 JSON 文件持久化的数据仓库。
@@ -290,6 +293,104 @@ object ShiwuRepository {
             _categories.value = merged.toList()
         }
         imported
+    }
+
+    /** CSV 表头（中文，与导入模板一致） */
+    val csvHeaders = listOf("名称", "分类", "价格", "购入日期", "备注", "状态", "退役日期", "照片文件名")
+
+    /** 导出物品清单为 CSV（纯文字；照片列记录文件名，照片本体随 ZIP 导出） */
+    fun exportCsv(): String = synchronized(lock) {
+        val sb = StringBuilder()
+        sb.append(csvHeaders.joinToString(",") { csvEscape(it) }).append("\n")
+        activeItems().forEach { item ->
+            sb.append(
+                listOf(
+                    item.name,
+                    item.category,
+                    "%.2f".format(Locale.US, item.price),
+                    LocalDate.ofEpochDay(item.purchaseDate).format(DateFmt),
+                    item.note,
+                    if (item.retired) "已退役" else "使用中",
+                    item.retirementDate?.let { LocalDate.ofEpochDay(it).format(DateFmt) } ?: "",
+                    item.photos.firstOrNull()?.let { File(it).name } ?: ""
+                ).joinToString(",") { csvEscape(it) }
+            ).append("\n")
+        }
+        sb.toString()
+    }
+
+    /** 生成 CSV 导入模板（表头 + 示例行） */
+    fun csvTemplate(): String = buildString {
+        append(csvHeaders.joinToString(",") { csvEscape(it) }).append("\n")
+        append(
+            listOf(
+                "Sony WH-1000XM5 无线降噪耳机", "数码", "2899.00", "2025-06-15",
+                "通勤降噪耳机", "使用中", "", ""
+            ).joinToString(",") { csvEscape(it) }
+        ).append("\n")
+        append(
+            listOf(
+                "Kindle Paperwhite", "阅读", "998.00", "2024-03-01",
+                "护眼阅读器", "已退役", "2025-01-20", ""
+            ).joinToString(",") { csvEscape(it) }
+        ).append("\n")
+        append(
+            listOf(
+                "客制化机械键盘", "数码", "899.00", "2025-12-01",
+                "", "使用中", "", "photo_123456.jpg"
+            ).joinToString(",") { csvEscape(it) }
+        ).append("\n")
+    }
+
+    /**
+     * 导入 CSV 物品清单（合并，重新分配 id）。
+     * photoMap：照片文件名 → 已复制到本机私有目录的绝对路径（来自 ZIP 导入）。
+     */
+    fun importCsv(text: String, photoMap: Map<String, String> = emptyMap()): Int = mutate {
+        val rows = parseCsv(text.removePrefix("\uFEFF"))
+        if (rows.isEmpty()) return@mutate 0
+        val header = rows.first().map { it.trim() }
+        val idx = csvHeaders.mapNotNull { h -> header.indexOf(h).takeIf { it >= 0 }?.let { h to it } }.toMap()
+        val now = System.currentTimeMillis()
+        var imported = 0
+        rows.drop(1).forEach { row ->
+            fun col(name: String): String = idx[name]?.let { row.getOrNull(it)?.trim() ?: "" } ?: ""
+            val name = col("名称")
+            if (name.isEmpty()) return@forEach
+            val retired = col("状态") in setOf("已退役", "退役", "是", "true")
+            val retirement = if (retired) {
+                runCatching { LocalDate.parse(col("退役日期")).toEpochDay() }
+                    .getOrDefault(LocalDate.now().toEpochDay())
+            } else {
+                null
+            }
+            val photoPath = col("照片文件名").let { photoMap[it] }
+            _items.value += Item(
+                id = nextItemId++,
+                name = name,
+                category = col("分类").ifBlank { "未分类" },
+                price = col("价格").toDoubleOrNull() ?: 0.0,
+                purchaseDate = runCatching { LocalDate.parse(col("购入日期")).toEpochDay() }
+                    .getOrDefault(LocalDate.now().toEpochDay()),
+                photos = if (photoPath != null) listOf(photoPath) else emptyList(),
+                note = col("备注"),
+                retired = retired,
+                retirementDate = retirement,
+                createdAt = now,
+                updatedAt = now
+            )
+            imported++
+        }
+        imported
+    }
+
+    /** 当前在用物品引用的照片文件（去重），供 ZIP 导出使用 */
+    fun exportPhotoFiles(): List<File> = synchronized(lock) {
+        activeItems()
+            .flatMap { it.photos }
+            .distinct()
+            .mapNotNull { runCatching { File(it) }.getOrNull() }
+            .filter { it.exists() && it.isFile }
     }
 
     data class BackupInfo(
