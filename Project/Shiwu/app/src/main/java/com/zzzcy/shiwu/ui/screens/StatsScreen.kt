@@ -1,8 +1,14 @@
 package com.zzzcy.shiwu.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -71,7 +79,6 @@ fun StatsScreen(items: List<Item>) {
     var range by remember { mutableStateOf(6) } // 1=本月, 6=近半年, 12=全年
     val trend = remember(items, range) { ShiwuRepository.trendPoints(range) }
     val shares = remember(items) { ShiwuRepository.categoryShares() }
-    val top = remember(items) { ShiwuRepository.topDayCosts(3) }
     val totalValue = items.filter { !it.deleted }.sumOf { it.price }
 
     Column(
@@ -106,7 +113,7 @@ fun StatsScreen(items: List<Item>) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 TrendPanel(trend, totalValue)
                 CategoryPanel(shares, items.count { !it.deleted })
-                TopCostPanel(top)
+                TopCostPanel(items.filter { !it.deleted })
             }
         }
 
@@ -360,29 +367,43 @@ private fun DonutChart(shares: List<Triple<String, Int, Double>>, totalCount: In
 }
 
 @Composable
-private fun TopCostPanel(top: List<Item>) {
+private fun TopCostPanel(items: List<Item>) {
+    var expanded by remember { mutableStateOf(false) }
+    val ranked = items.sortedByDescending { it.dayCost }
+    val maxCost = ranked.maxOfOrNull { it.dayCost } ?: 1.0
     CardSurface(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "日均成本 TOP 3",
+                    text = "日均成本排名",
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Medium,
                     color = Fg
                 )
-                Text(
-                    text = "按当前持有",
-                    fontFamily = NumFamily,
-                    fontSize = 11.sp,
-                    color = Muted
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (expanded) "共 ${ranked.size} 件" else "TOP 3 · 按当前持有",
+                        fontFamily = NumFamily,
+                        fontSize = 11.sp,
+                        color = Muted
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = Muted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
             Spacer(Modifier.height(4.dp))
-            if (top.isEmpty()) {
+            if (ranked.isEmpty()) {
                 Text(
                     text = "暂无数据",
                     fontSize = 12.sp,
@@ -390,67 +411,82 @@ private fun TopCostPanel(top: List<Item>) {
                     modifier = Modifier.padding(vertical = 20.dp)
                 )
             } else {
-                val maxCost = top.maxOfOrNull { it.dayCost } ?: 1.0
-                top.forEachIndexed { index, item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(
-                                    if (index == 0) Accent else Bg2,
-                                    RoundedCornerShape(6.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "${index + 1}",
-                                fontFamily = NumFamily,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (index == 0) OnAccent else Muted
-                            )
+                ranked.take(3).forEachIndexed { index, item ->
+                    CostRankRow(item, index + 1, maxCost)
+                }
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        ranked.drop(3).forEachIndexed { index, item ->
+                            CostRankRow(item, index + 4, maxCost)
                         }
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = item.name,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Fg,
-                                maxLines = 1
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .background(Bg2, RoundedCornerShape(50))
-                            ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth((item.dayCost / maxCost).toFloat())
-                                        .height(4.dp)
-                                        .background(Accent.copy(alpha = 0.8f), RoundedCornerShape(50))
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = "¥${"%.1f".format(item.dayCost)}",
-                            fontFamily = NumFamily,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Fg
-                        )
-                        Text(text = "/天", fontSize = 9.5.sp, color = Muted)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CostRankRow(item: Item, rank: Int, maxCost: Double) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .background(
+                    if (rank == 1) Accent else Bg2,
+                    RoundedCornerShape(6.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$rank",
+                fontFamily = NumFamily,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (rank == 1) OnAccent else Muted
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = item.name,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Fg,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Bg2, RoundedCornerShape(50))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth((item.dayCost / maxCost).toFloat())
+                        .height(4.dp)
+                        .background(Accent.copy(alpha = 0.8f), RoundedCornerShape(50))
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = "¥${"%.1f".format(item.dayCost)}",
+            fontFamily = NumFamily,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg
+        )
+        Text(text = "/天", fontSize = 9.5.sp, color = Muted)
     }
 }
