@@ -203,23 +203,6 @@ fun ItemDetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(46.dp)
-                        .background(Accent, RoundedCornerShape(14.dp))
-                        .clickable(onClick = onEdit),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "编辑物品",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = com.zzzcy.shiwu.ui.theme.OnAccent
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
                         .background(if (item.retired) AccentSoft else Bg2, RoundedCornerShape(14.dp))
                         .clip(RoundedCornerShape(14.dp))
                         .clickable { showRetirePicker = true },

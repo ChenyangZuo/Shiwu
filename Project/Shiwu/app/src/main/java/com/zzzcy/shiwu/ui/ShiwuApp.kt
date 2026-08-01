@@ -1,6 +1,8 @@
 package com.zzzcy.shiwu.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -57,6 +59,7 @@ fun ShiwuApp() {
     var editingItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingWishId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    var formDirect by rememberSaveable { mutableStateOf(false) }
 
     fun closeForm() {
         formKind = null
@@ -99,6 +102,7 @@ fun ShiwuApp() {
                         onAddClick = {
                             formKind = FormKind.ITEM
                             editingItemId = null
+                            formDirect = false
                         }
                     )
                     DockTab.WISHLIST -> WishlistScreen(
@@ -106,10 +110,12 @@ fun ShiwuApp() {
                         onWishClick = {
                             formKind = FormKind.WISH
                             editingWishId = it
+                            formDirect = false
                         },
                         onAddClick = {
                             formKind = FormKind.WISH
                             editingWishId = null
+                            formDirect = false
                         },
                         onPurchased = { newItemId ->
                             formKind = null
@@ -141,10 +147,12 @@ fun ShiwuApp() {
                             DockTab.HOME -> {
                                 formKind = FormKind.ITEM
                                 editingItemId = null
+                                formDirect = false
                             }
                             DockTab.WISHLIST -> {
                                 formKind = FormKind.WISH
                                 editingWishId = null
+                                formDirect = false
                             }
                             else -> Unit
                         }
@@ -182,6 +190,7 @@ fun ShiwuApp() {
                         detailItemId = null
                         formKind = FormKind.ITEM
                         editingItemId = id
+                        formDirect = true
                     }
                 )
             }
@@ -205,14 +214,22 @@ fun ShiwuApp() {
         // 新增 / 编辑表单（底部滑入）
         AnimatedVisibility(
             visible = formKind != null,
-            enter = slideInVertically(
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-                initialOffsetY = { it }
-            ) + fadeIn(tween(durationMillis = 200)),
-            exit = slideOutVertically(
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-                targetOffsetY = { it }
-            ) + fadeOut(tween(durationMillis = 180))
+            enter = if (formDirect) {
+                EnterTransition.None
+            } else {
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    initialOffsetY = { it }
+                ) + fadeIn(tween(durationMillis = 200))
+            },
+            exit = if (formDirect) {
+                ExitTransition.None
+            } else {
+                slideOutVertically(
+                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                    targetOffsetY = { it }
+                ) + fadeOut(tween(durationMillis = 180))
+            }
         ) {
             when (formKind) {
                 FormKind.ITEM -> ItemFormScreen(
