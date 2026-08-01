@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 
@@ -26,6 +28,9 @@ data class ItemEntity(
     val note: String,
     val retired: Boolean,
     val retirementDate: Long?,
+    val productionDate: Long?,
+    val expiryDate: Long?,
+    val shelfLifeDays: Int?,
     val deleted: Boolean,
     val deletedAt: Long?,
     val createdAt: Long,
@@ -80,12 +85,14 @@ private fun photosFromJson(json: String): List<String> {
 fun Item.toEntity() = ItemEntity(
     id = id, name = name, category = category, price = price, purchaseDate = purchaseDate,
     photos = photosToJson(photos), note = note, retired = retired, retirementDate = retirementDate,
+    productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
     deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId
 )
 
 fun ItemEntity.toModel() = Item(
     id = id, name = name, category = category, price = price, purchaseDate = purchaseDate,
     photos = photosFromJson(photos), note = note, retired = retired, retirementDate = retirementDate,
+    productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
     deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId
 )
 
@@ -196,7 +203,7 @@ interface CategoryDao {
 
 @Database(
     entities = [ItemEntity::class, WishEntity::class, ListEntity::class, CategoryEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -207,6 +214,17 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "shiwu.db").build()
+            Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "shiwu.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
+
+        /** v1 → v2：items 表新增生产日期 / 到期日期 / 保质期天数（旧数据为空，视为无保质期信息） */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN productionDate INTEGER")
+                db.execSQL("ALTER TABLE items ADD COLUMN expiryDate INTEGER")
+                db.execSQL("ALTER TABLE items ADD COLUMN shelfLifeDays INTEGER")
+            }
+        }
     }
 }

@@ -378,11 +378,20 @@ object ShiwuRepository {
         price: Double,
         purchaseDate: Long,
         photos: List<String> = emptyList(),
-        note: String = ""
+        note: String = "",
+        productionDate: Long? = null,
+        expiryDate: Long? = null,
+        shelfLifeDays: Int? = null
     ): Long {
         val id = nextItemId++
         persistCounters()
-        val item = Item(id, name, category, price, purchaseDate, photos, note, listId = _currentListId.value)
+        val item = Item(
+            id, name, category, price, purchaseDate, photos, note,
+            productionDate = productionDate,
+            expiryDate = expiryDate,
+            shelfLifeDays = shelfLifeDays,
+            listId = _currentListId.value
+        )
         scope.launch { db?.itemDao()?.upsert(item.toEntity()) }
         return id
     }
@@ -629,7 +638,7 @@ object ShiwuRepository {
     }
 
     /** CSV 表头（中文，与导入模板一致） */
-    val csvHeaders = listOf("名称", "分类", "价格", "购入日期", "备注", "状态", "退役日期", "照片文件名")
+    val csvHeaders = listOf("名称", "分类", "价格", "购入日期", "备注", "状态", "退役日期", "照片文件名", "生产日期", "到期日期", "保质期（天）")
 
     /** 导出物品清单为 CSV（纯文字；照片列记录文件名，照片本体随 ZIP 导出） */
     fun exportCsv(): String {
@@ -645,7 +654,10 @@ object ShiwuRepository {
                     item.note,
                     if (item.retired) "已退役" else "使用中",
                     item.retirementDate?.let { LocalDate.ofEpochDay(it).format(DateFmt) } ?: "",
-                    item.photos.firstOrNull()?.let { File(it).name } ?: ""
+                    item.photos.firstOrNull()?.let { File(it).name } ?: "",
+                    item.productionDate?.let { LocalDate.ofEpochDay(it).format(DateFmt) } ?: "",
+                    item.expiryDate?.let { LocalDate.ofEpochDay(it).format(DateFmt) } ?: "",
+                    item.shelfLifeDays?.toString() ?: ""
                 ).joinToString(",") { csvEscape(it) }
             ).append("\n")
         }
@@ -658,19 +670,19 @@ object ShiwuRepository {
         append(
             listOf(
                 "Sony WH-1000XM5 无线降噪耳机", "数码", "2899.00", "2025-06-15",
-                "通勤降噪耳机", "使用中", "", ""
+                "通勤降噪耳机", "使用中", "", "", "2025-05-20", "", "1095"
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
         append(
             listOf(
                 "Kindle Paperwhite", "阅读", "998.00", "2024-03-01",
-                "护眼阅读器", "已退役", "2025-01-20", ""
+                "护眼阅读器", "已退役", "2025-01-20", "", "2023-12-01", "2025-12-01", ""
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
         append(
             listOf(
                 "客制化机械键盘", "数码", "899.00", "2025-12-01",
-                "", "使用中", "", "photo_123456.jpg"
+                "", "使用中", "", "photo_123456.jpg", "", "2027-01-01", "730"
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
     }
@@ -699,6 +711,27 @@ object ShiwuRepository {
             } else {
                 null
             }
+            val productionDate = runCatching { LocalDate.parse(col("生产日期")).toEpochDay() }.getOrNull()
+            val expiryDate = runCatching { LocalDate.parse(col("到期日期")).toEpochDay() }.getOrNull()
+            val shelfLifeDays = col("保质期（天）").toIntOrNull()
+            // 三选二：任填两项则补齐第三项；不足两项视为无保质期信息
+            val (prod, exp, shelf) = when {
+                productionDate != null && shelfLifeDays != null && shelfLifeDays > 0 ->
+                    Triple(
+                        productionDate,
+                        LocalDate.ofEpochDay(productionDate).plusDays(shelfLifeDays.toLong()).toEpochDay(),
+                        shelfLifeDays
+                    )
+                productionDate != null && expiryDate != null && expiryDate > productionDate ->
+                    Triple(productionDate, expiryDate, (expiryDate - productionDate).toInt())
+                expiryDate != null && shelfLifeDays != null && shelfLifeDays > 0 && expiryDate >= shelfLifeDays ->
+                    Triple(
+                        LocalDate.ofEpochDay(expiryDate).minusDays(shelfLifeDays.toLong()).toEpochDay(),
+                        expiryDate,
+                        shelfLifeDays
+                    )
+                else -> Triple(null, null, null)
+            }
             val photoPath = col("照片文件名").let { photoMap[it] }
             val categoryName = col("分类").ifBlank { "未分类" }
             if (categoryName !in existingCategories) {
@@ -716,6 +749,9 @@ object ShiwuRepository {
                 note = col("备注"),
                 retired = retired,
                 retirementDate = retirement,
+                productionDate = prod,
+                expiryDate = exp,
+                shelfLifeDays = shelf,
                 createdAt = now,
                 updatedAt = now,
                 listId = _currentListId.value

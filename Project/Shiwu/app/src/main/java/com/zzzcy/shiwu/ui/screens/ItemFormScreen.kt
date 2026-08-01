@@ -108,10 +108,17 @@ fun ItemFormScreen(
     var purchaseDate by remember(editingItem?.id) {
         mutableStateOf(LocalDate.ofEpochDay(editingItem?.purchaseDate ?: LocalDate.now().toEpochDay()))
     }
+    var productionDate by remember(editingItem?.id) { mutableStateOf(editingItem?.productionDate) }
+    var expiryDate by remember(editingItem?.id) { mutableStateOf(editingItem?.expiryDate) }
+    var shelfLifeText by remember(editingItem?.id) {
+        mutableStateOf(editingItem?.shelfLifeDays?.toString() ?: "")
+    }
     var note by remember(editingItem?.id) { mutableStateOf(editingItem?.note ?: "") }
     var photos by remember(editingItem?.id) { mutableStateOf(editingItem?.photos ?: emptyList()) }
 
     var showDatePicker by remember { mutableStateOf(false) }
+    var showProductionPicker by remember { mutableStateOf(false) }
+    var showExpiryPicker by remember { mutableStateOf(false) }
     var showNewCategory by remember { mutableStateOf(false) }
     var newCategoryText by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -142,8 +149,63 @@ fun ItemFormScreen(
         if (picked != null) replacePhoto(picked)
     }
 
+    /** 三选二：设置生产日期时，用保质期或到期日期推算第三项 */
+    fun setProductionDate(d: Long) {
+        productionDate = d
+        val s = shelfLifeText.toIntOrNull()
+        if (s != null && s > 0) {
+            expiryDate = LocalDate.ofEpochDay(d).plusDays(s.toLong()).toEpochDay()
+        } else if (expiryDate != null && expiryDate!! > d) {
+            shelfLifeText = (expiryDate!! - d).toString()
+        }
+    }
+
+    /** 三选二：设置到期日期时，用生产日期或保质期推算第三项 */
+    fun setExpiryDate(d: Long) {
+        expiryDate = d
+        val p = productionDate
+        if (p != null && d > p) {
+            shelfLifeText = (d - p).toString()
+        } else {
+            val s = shelfLifeText.toIntOrNull()
+            if (s != null && s > 0 && d >= s) {
+                productionDate = LocalDate.ofEpochDay(d).minusDays(s.toLong()).toEpochDay()
+            }
+        }
+    }
+
+    /** 三选二：设置保质期天数时，用生产日期或到期日期推算第三项 */
+    fun setShelfLife(text: String) {
+        shelfLifeText = text
+        val s = text.toIntOrNull()
+        val p = productionDate
+        val e = expiryDate
+        if (s != null && s > 0 && p != null) {
+            expiryDate = LocalDate.ofEpochDay(p).plusDays(s.toLong()).toEpochDay()
+        } else if (s != null && s > 0 && e != null && e >= s) {
+            productionDate = LocalDate.ofEpochDay(e).minusDays(s.toLong()).toEpochDay()
+        }
+    }
+
+    /** 保存时规整三字段：任填两项则补齐第三项；不足两项视为无保质期信息 */
+    fun resolveExpiry(): Triple<Long?, Long?, Int?> {
+        val p = productionDate
+        val e = expiryDate
+        val s = shelfLifeText.toIntOrNull()
+        return when {
+            p != null && s != null && s > 0 ->
+                Triple(p, LocalDate.ofEpochDay(p).plusDays(s.toLong()).toEpochDay(), s)
+            p != null && e != null && e > p ->
+                Triple(p, e, (e - p).toInt())
+            e != null && s != null && s > 0 && e >= s ->
+                Triple(LocalDate.ofEpochDay(e).minusDays(s.toLong()).toEpochDay(), e, s)
+            else -> Triple(null, null, null)
+        }
+    }
+
     fun save() {
         val price = priceText.toDoubleOrNull()
+        val (prod, exp, shelf) = resolveExpiry()
         when {
             name.isBlank() -> error = "请输入物品名称"
             price == null || price < 0 -> error = "请输入有效的价格（≥ 0）"
@@ -157,7 +219,10 @@ fun ItemFormScreen(
                         price = price,
                         purchaseDate = purchaseDate.toEpochDay(),
                         photos = photos,
-                        note = note.trim()
+                        note = note.trim(),
+                        productionDate = prod,
+                        expiryDate = exp,
+                        shelfLifeDays = shelf
                     )
                     onSaved(id)
                 } else {
@@ -168,7 +233,10 @@ fun ItemFormScreen(
                             price = price,
                             purchaseDate = purchaseDate.toEpochDay(),
                             photos = photos,
-                            note = note.trim()
+                            note = note.trim(),
+                            productionDate = prod,
+                            expiryDate = exp,
+                            shelfLifeDays = shelf
                         )
                     )
                     onSaved(editingItem.id)
@@ -297,6 +365,37 @@ fun ItemFormScreen(
                         }
                     }
                 }
+                FieldLabel("保质期信息", hint = "选填 · 填任意两项，第三项自动计算")
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        ExpiryDateField(
+                            label = "生产日期",
+                            date = productionDate,
+                            onClick = { showProductionPicker = true }
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        ExpiryDateField(
+                            label = "到期日期",
+                            date = expiryDate,
+                            onClick = { showExpiryPicker = true }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                FormTextField(
+                    label = "保质期（天）",
+                    required = false,
+                    value = shelfLifeText,
+                    onValueChange = { input ->
+                        if (input.length <= 6 && (input.isEmpty() || input.all { it.isDigit() })) {
+                            setShelfLife(input)
+                        }
+                    },
+                    placeholder = "选填，如 365",
+                    keyboardType = KeyboardType.Number
+                )
                 FormTextField(
                     label = "备注",
                     required = false,
@@ -387,6 +486,52 @@ fun ItemFormScreen(
             }
         }
 
+        if (showProductionPicker) {
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = (productionDate?.let { LocalDate.ofEpochDay(it) } ?: purchaseDate)
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { showProductionPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        state.selectedDateMillis?.let {
+                            setProductionDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay())
+                        }
+                        showProductionPicker = false
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showProductionPicker = false }) { Text("取消") }
+                }
+            ) {
+                DatePicker(state = state)
+            }
+        }
+
+        if (showExpiryPicker) {
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = (expiryDate?.let { LocalDate.ofEpochDay(it) } ?: purchaseDate)
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { showExpiryPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        state.selectedDateMillis?.let {
+                            setExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay())
+                        }
+                        showExpiryPicker = false
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExpiryPicker = false }) { Text("取消") }
+                }
+            ) {
+                DatePicker(state = state)
+            }
+        }
+
         if (showNewCategory) {
             AlertDialog(
                 onDismissRequest = { showNewCategory = false },
@@ -441,6 +586,38 @@ fun ItemFormScreen(
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExpiryDateField(label: String, date: Long?, onClick: () -> Unit) {
+    Column {
+        FieldLabel(label)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .border(1.dp, Border, RoundedCornerShape(10.dp))
+                .background(Surface, RoundedCornerShape(10.dp))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = date?.let { LocalDate.ofEpochDay(it).formatDate() } ?: "未设置",
+                fontSize = 13.sp,
+                fontFamily = NumFamily,
+                color = if (date != null) Fg else Muted2,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Outlined.CalendarMonth,
+                contentDescription = null,
+                tint = Muted2,
+                modifier = Modifier.size(14.dp)
             )
         }
     }

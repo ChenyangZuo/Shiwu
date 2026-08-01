@@ -35,6 +35,9 @@ data class Category(
     val icon: String = "shopping"
 )
 
+/** 保质期状态 */
+enum class ExpiryStatus { NONE, NORMAL, EXPIRING, EXPIRED }
+
 /** 旧分类名 → 默认图标 key（兼容历史数据与未知分类） */
 fun defaultIconKeyForCategory(name: String): String = when (name) {
     "数码" -> "devices"
@@ -73,6 +76,9 @@ data class Item(
     val note: String = "",
     val retired: Boolean = false,
     val retirementDate: Long? = null,
+    val productionDate: Long? = null,   // 生产日期 epochDay（与保质期/到期日三选二）
+    val expiryDate: Long? = null,       // 到期日期 epochDay
+    val shelfLifeDays: Int? = null,     // 保质期天数
     val deleted: Boolean = false,
     val deletedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
@@ -89,6 +95,32 @@ data class Item(
     /** 日均成本 */
     val dayCost: Double
         get() = if (price <= 0 || serviceDays == 0L) 0.0 else price / serviceDays
+
+    /** 剩余保质期比例（0..1）：无保质期信息返回 null */
+    val remainingRatio: Double?
+        get() {
+            val expiry = expiryDate ?: return null
+            val start = productionDate ?: purchaseDate
+            val total = expiry - start
+            if (total <= 0) return null
+            val left = expiry - LocalDate.now().toEpochDay()
+            return (left.toDouble() / total).coerceIn(0.0, 1.0)
+        }
+
+    /** 距离到期的天数（负数表示已过期天数） */
+    val daysToExpiry: Long?
+        get() = expiryDate?.let { it - LocalDate.now().toEpochDay() }
+
+    /** 保质期状态：不足 10% 剩余为临期，<= 0 为已过期 */
+    val expiryStatus: ExpiryStatus
+        get() {
+            val ratio = remainingRatio ?: return ExpiryStatus.NONE
+            return when {
+                ratio <= 0.0 -> ExpiryStatus.EXPIRED
+                ratio < 0.10 -> ExpiryStatus.EXPIRING
+                else -> ExpiryStatus.NORMAL
+            }
+        }
 }
 
 /** 心愿 */
@@ -143,6 +175,9 @@ fun Item.toJson(): JSONObject = JSONObject().apply {
     put("note", note)
     put("retired", retired)
     put("retirementDate", retirementDate ?: JSONObject.NULL)
+    put("productionDate", productionDate ?: JSONObject.NULL)
+    put("expiryDate", expiryDate ?: JSONObject.NULL)
+    put("shelfLifeDays", shelfLifeDays ?: JSONObject.NULL)
     put("deleted", deleted)
     put("deletedAt", deletedAt ?: JSONObject.NULL)
     put("createdAt", createdAt)
@@ -155,6 +190,9 @@ fun itemFromJson(o: JSONObject): Item {
     val arr = o.optJSONArray("photos") ?: JSONArray()
     for (i in 0 until arr.length()) photos.add(arr.getString(i))
     val retirement = if (o.isNull("retirementDate")) null else o.optLong("retirementDate")
+    val productionDate = if (o.isNull("productionDate")) null else o.optLong("productionDate")
+    val expiryDate = if (o.isNull("expiryDate")) null else o.optLong("expiryDate")
+    val shelfLifeDays = if (o.isNull("shelfLifeDays")) null else o.optLong("shelfLifeDays").toInt()
     val deletedAt = if (o.isNull("deletedAt")) null else o.optLong("deletedAt")
     return Item(
         id = o.getLong("id"),
@@ -166,6 +204,9 @@ fun itemFromJson(o: JSONObject): Item {
         note = o.optString("note", ""),
         retired = o.optBoolean("retired", false),
         retirementDate = retirement,
+        productionDate = productionDate,
+        expiryDate = expiryDate,
+        shelfLifeDays = shelfLifeDays,
         deleted = o.optBoolean("deleted", false),
         deletedAt = deletedAt,
         createdAt = o.optLong("createdAt", System.currentTimeMillis()),
