@@ -118,6 +118,12 @@ fun ItemFormScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    /** 单张照片：新照片直接替换旧照片，并清理旧文件 */
+    fun replacePhoto(path: String) {
+        photos.firstOrNull()?.let { runCatching { File(it).delete() } }
+        photos = listOf(path)
+    }
+
     // 拍照暂存文件
     var cameraTemp by remember { mutableStateOf<File?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -125,16 +131,16 @@ fun ItemFormScreen(
     ) { ok ->
         if (ok) {
             PhotoUtils.moveCameraPhoto(context, cameraTemp)?.let { path ->
-                if (photos.size < 6) photos = photos + path
+                replacePhoto(path)
             }
         }
         cameraTemp = null
     }
     val galleryLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 6)
-    ) { uris: List<Uri> ->
-        val picked = uris.mapNotNull { PhotoUtils.copyToInternal(context, it) }
-        photos = (photos + picked).take(6)
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        val picked = uri?.let { PhotoUtils.copyToInternal(context, it) }
+        if (picked != null) replacePhoto(picked)
     }
 
     fun save() {
@@ -227,7 +233,10 @@ fun ItemFormScreen(
                         cameraTemp = file
                         cameraLauncher.launch(uri)
                     },
-                    onRemove = { index -> photos = photos.filterIndexed { i, _ -> i != index } }
+                    onRemove = {
+                        photos.firstOrNull()?.let { runCatching { File(it).delete() } }
+                        photos = emptyList()
+                    }
                 )
                 FormTextField(
                     label = "名称",
@@ -474,10 +483,10 @@ private fun PhotoField(
     photos: List<String>,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
-    onRemove: (Int) -> Unit
+    onRemove: () -> Unit
 ) {
     Column {
-        FieldLabel("照片", hint = "选填 · 最多 6 张")
+        FieldLabel("照片", hint = "选填 · 仅 1 张")
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
@@ -526,7 +535,7 @@ private fun PhotoField(
                     )
                 }
             }
-            photos.take(4).forEachIndexed { index, path ->
+            photos.firstOrNull()?.let { path ->
                 Box(
                     modifier = Modifier
                         .size(72.dp)
@@ -547,7 +556,7 @@ private fun PhotoField(
                             .align(Alignment.TopEnd)
                             .size(20.dp)
                             .background(Color(0xCC000000), RoundedCornerShape(topEnd = 10.dp, bottomStart = 10.dp))
-                            .clickable { onRemove(index) },
+                            .clickable { onRemove() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(

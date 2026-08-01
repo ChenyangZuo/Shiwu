@@ -325,7 +325,7 @@ private fun PhotoStrip(photos: List<String>) {
             .height(120.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        photos.take(4).forEach { path ->
+        photos.take(1).forEach { path ->
             Box(
                 modifier = Modifier
                     .weight(1f)
