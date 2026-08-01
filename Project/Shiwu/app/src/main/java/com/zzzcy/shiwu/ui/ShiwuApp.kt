@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,6 +61,16 @@ fun ShiwuApp() {
     var editingWishId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
+
+    // 覆盖层内容在退出动画期间保留：visible 状态被置空时，动画仍能带着旧内容滑出
+    val detailContentId = remember { mutableStateOf<Long?>(null) }
+    val formContentKind = remember { mutableStateOf<FormKind?>(null) }
+    val formContentItemId = remember { mutableStateOf<Long?>(null) }
+    val formContentWishId = remember { mutableStateOf<Long?>(null) }
+    if (detailItemId != null) detailContentId.value = detailItemId
+    if (formKind != null) formContentKind.value = formKind
+    if (editingItemId != null) formContentItemId.value = editingItemId
+    if (editingWishId != null) formContentWishId.value = editingWishId
 
     fun closeForm() {
         formKind = null
@@ -182,7 +193,7 @@ fun ShiwuApp() {
                 targetOffsetY = { it }
             ) + fadeOut(tween(durationMillis = 180))
         ) {
-            detailItemId?.let { id ->
+            detailContentId.value?.let { id ->
                 ItemDetailScreen(
                     itemId = id,
                     onBack = { detailItemId = null },
@@ -231,9 +242,9 @@ fun ShiwuApp() {
                 ) + fadeOut(tween(durationMillis = 180))
             }
         ) {
-            when (formKind) {
+            when (formContentKind.value) {
                 FormKind.ITEM -> ItemFormScreen(
-                    editingItem = editingItemId?.let { ShiwuRepository.itemById(it) },
+                    editingItem = formContentItemId.value?.let { ShiwuRepository.itemById(it) },
                     onClose = ::closeForm,
                     onDeleted = { detailItemId = null },
                     onSaved = { id ->
@@ -242,7 +253,7 @@ fun ShiwuApp() {
                     }
                 )
                 FormKind.WISH -> WishFormScreen(
-                    editingWish = editingWishId?.let { ShiwuRepository.wishById(it) },
+                    editingWish = formContentWishId.value?.let { ShiwuRepository.wishById(it) },
                     onClose = ::closeForm
                 )
                 null -> Unit
