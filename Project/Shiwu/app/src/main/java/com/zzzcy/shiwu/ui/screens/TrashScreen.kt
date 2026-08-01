@@ -113,7 +113,7 @@ fun TrashScreen(onClose: () -> Unit) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "删除的物品会先到这里，30 天后自动清除",
+                        text = "删除的物品会先到这里，可随时恢复或彻底删除",
                         fontSize = 12.sp,
                         color = Muted
                     )
@@ -142,7 +142,7 @@ fun TrashScreen(onClose: () -> Unit) {
                                     )
                                     Spacer(Modifier.height(3.dp))
                                     Text(
-                                        text = "删除于 ${item.deletedAt?.let(::formatTime) ?: "-"}",
+                                        text = "删除于 ${item.deletedAt?.let(::formatTime) ?: "-"} · 来自「${ShiwuRepository.listName(item.listId)}」",
                                         fontSize = 10.5.sp,
                                         color = Muted
                                     )

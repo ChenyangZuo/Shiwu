@@ -28,13 +28,18 @@ object ShiwuRepository {
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
+    private val _lists = MutableStateFlow<List<InventoryList>>(emptyList())
     private val _categories = MutableStateFlow(defaultCategories)
     private val _themeMode = MutableStateFlow("system")
     private var nextItemId = 1L
     private var nextWishId = 1L
+    private var nextListId = 1L
+    private val _currentListId = MutableStateFlow(1L)
 
     val items: StateFlow<List<Item>> = _items.asStateFlow()
     val wishes: StateFlow<List<Wish>> = _wishes.asStateFlow()
+    val lists: StateFlow<List<InventoryList>> = _lists.asStateFlow()
+    val currentListId: StateFlow<Long> = _currentListId.asStateFlow()
     val categories: StateFlow<List<String>> = _categories.asStateFlow()
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
@@ -54,8 +59,65 @@ object ShiwuRepository {
                 prefs?.edit()?.putLong("first_launch_day", firstLaunchDay)?.apply()
             }
             load()
+            // 恢复上次使用的清单；若已被删除则回退到第一份
+            val savedListId = prefs?.getLong("current_list_id", -1L) ?: -1L
+            val valid = _lists.value.any { it.id == savedListId }
+            _currentListId.value = if (valid) savedListId else (_lists.value.firstOrNull()?.id ?: 1L)
             initialized = true
         }
+    }
+
+    /** 当前清单实体 */
+    val currentList: InventoryList?
+        get() = _lists.value.firstOrNull { it.id == _currentListId.value }
+
+    fun listName(id: Long): String = _lists.value.firstOrNull { it.id == id }?.name ?: "未知清单"
+
+    // ---------- 清单管理 ----------
+
+    /** 清单内物品数（不含回收站） */
+    fun listItemCount(listId: Long): Int = _items.value.count { it.listId == listId && !it.deleted }
+
+    /** 清单内心愿数（未购买） */
+    fun listWishCount(listId: Long): Int = _wishes.value.count { it.listId == listId && !it.purchased }
+
+    /** 新建清单并返回 id */
+    fun addList(name: String): Long = mutate {
+        val id = nextListId++
+        _lists.value += InventoryList(id = id, name = name.trim().ifEmpty { "我的物品 $id" })
+        id
+    }
+
+    fun renameList(id: Long, name: String) = mutate {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return@mutate
+        _lists.value = _lists.value.map {
+            if (it.id == id) it.copy(name = trimmed, updatedAt = System.currentTimeMillis()) else it
+        }
+    }
+
+    /**
+     * 删除清单：清单内物品移入回收站、心愿一并删除；不允许删除最后一份清单。
+     * 若删除的是当前清单，自动切到第一份剩余清单。
+     */
+    fun deleteList(id: Long): Boolean = mutate {
+        if (_lists.value.size <= 1) return@mutate false
+        _lists.value = _lists.value.filterNot { it.id == id }
+        _items.value = _items.value.map {
+            if (it.listId == id) it.copy(deleted = true, deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) else it
+        }
+        _wishes.value = _wishes.value.filterNot { it.listId == id }
+        if (_currentListId.value == id) {
+            _currentListId.value = _lists.value.first().id
+            prefs?.edit()?.putLong("current_list_id", _currentListId.value)?.apply()
+        }
+        true
+    }
+
+    fun setCurrentListId(id: Long) {
+        if (_lists.value.none { it.id == id }) return
+        _currentListId.value = id
+        prefs?.edit()?.putLong("current_list_id", id)?.apply()
     }
 
     /** 使用天数（自首次启动起） */
@@ -109,6 +171,9 @@ object ShiwuRepository {
 
     fun activeItems(): List<Item> = _items.value.filter { !it.deleted }
 
+    /** 指定清单内的在用物品 */
+    fun itemsOf(listId: Long): List<Item> = _items.value.filter { !it.deleted && it.listId == listId }
+
     fun trashedItems(): List<Item> = _items.value.filter { it.deleted }
 
     fun itemById(id: Long): Item? = _items.value.firstOrNull { it.id == id }
@@ -126,7 +191,7 @@ object ShiwuRepository {
         note: String = ""
     ): Long = mutate {
         val id = nextItemId++
-        _items.value += Item(id, name, category, price, purchaseDate, photos, note)
+        _items.value += Item(id, name, category, price, purchaseDate, photos, note, listId = _currentListId.value)
         id
     }
 
@@ -173,7 +238,7 @@ object ShiwuRepository {
         note: String
     ): Long = mutate {
         val id = nextWishId++
-        _wishes.value += Wish(id, name, category, price, priority, savedAmount, note)
+        _wishes.value += Wish(id, name, category, price, priority, savedAmount, note, listId = _currentListId.value)
         id
     }
 
@@ -194,7 +259,8 @@ object ShiwuRepository {
             name = wish.name,
             category = wish.category,
             price = wish.price,
-            purchaseDate = LocalDate.now().toEpochDay()
+            purchaseDate = LocalDate.now().toEpochDay(),
+            listId = wish.listId
         )
         _wishes.value = _wishes.value.map {
             if (it.id == wishId) it.copy(purchased = true, purchasedItemId = itemId, updatedAt = System.currentTimeMillis()) else it
@@ -211,8 +277,8 @@ object ShiwuRepository {
         val monthNew: Int
     )
 
-    fun homeStats(): HomeStats {
-        val list = activeItems()
+    fun homeStats(listId: Long = _currentListId.value): HomeStats {
+        val list = itemsOf(listId)
         val now = LocalDate.now()
         return HomeStats(
             totalValue = list.sumOf { it.price },
@@ -222,8 +288,8 @@ object ShiwuRepository {
         )
     }
 
-    fun wishStats(): Triple<Double, Int, Double> {
-        val list = _wishes.value.filter { !it.purchased }
+    fun wishStats(listId: Long = _currentListId.value): Triple<Double, Int, Double> {
+        val list = _wishes.value.filter { !it.purchased && it.listId == listId }
         return Triple(
             list.sumOf { it.price },
             list.size,
@@ -232,8 +298,8 @@ object ShiwuRepository {
     }
 
     /** 近 6 个月总价值趋势（按购入时间累计） */
-    fun trendPoints(months: Int = 6): List<Pair<String, Double>> {
-        val list = activeItems()
+    fun trendPoints(months: Int = 6, listId: Long = _currentListId.value): List<Pair<String, Double>> {
+        val list = itemsOf(listId)
         val now = YearMonth.now()
         return (months - 1 downTo 0).map { back ->
             val ym = now.minusMonths(back.toLong())
@@ -244,8 +310,8 @@ object ShiwuRepository {
     }
 
     /** 分类占比 */
-    fun categoryShares(): List<Triple<String, Double, Double>> {
-        val list = activeItems()
+    fun categoryShares(listId: Long = _currentListId.value): List<Triple<String, Double, Double>> {
+        val list = itemsOf(listId)
         val total = list.sumOf { it.price }
         if (total <= 0) return emptyList()
         return list.groupBy { it.category }
@@ -253,8 +319,8 @@ object ShiwuRepository {
             .sortedByDescending { it.second }
     }
 
-    fun topDayCosts(limit: Int = 3): List<Item> =
-        activeItems().sortedByDescending { it.dayCost }.take(limit)
+    fun topDayCosts(limit: Int = 3, listId: Long = _currentListId.value): List<Item> =
+        itemsOf(listId).sortedByDescending { it.dayCost }.take(limit)
 
     // ---------- 导入导出 / 备份 ----------
 
@@ -266,6 +332,7 @@ object ShiwuRepository {
             put("exportedAt", System.currentTimeMillis())
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
+            put("lists", JSONArray(_lists.value.map { it.toJson() }))
             put("categories", JSONArray(_categories.value))
         }.toString(1)
     }
@@ -273,17 +340,40 @@ object ShiwuRepository {
     /** 导入数据（合并：不覆盖现有记录，冲突项重新分配 id） */
     fun importJson(text: String): Int = mutate {
         val root = JSONObject(text)
+        // 清单：旧备份无 lists 时全部归入当前清单；有则按 id 映射新建
+        val listIdMap = HashMap<Long, Long>()
+        val larr = root.optJSONArray("lists")
+        if (larr != null && larr.length() > 0) {
+            for (i in 0 until larr.length()) {
+                val l = listFromJson(larr.getJSONObject(i))
+                val newId = nextListId++
+                _lists.value += l.copy(id = newId)
+                listIdMap[l.id] = newId
+            }
+        }
         val arr = root.optJSONArray("items") ?: JSONArray()
         var imported = 0
         for (i in 0 until arr.length()) {
             val item = itemFromJson(arr.getJSONObject(i))
-            _items.value += item.copy(id = nextItemId++, createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis())
+            val targetList = listIdMap[item.listId] ?: _currentListId.value
+            _items.value += item.copy(
+                id = nextItemId++,
+                listId = targetList,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
             imported++
         }
         val warr = root.optJSONArray("wishes") ?: JSONArray()
         for (i in 0 until warr.length()) {
             val wish = wishFromJson(warr.getJSONObject(i))
-            _wishes.value += wish.copy(id = nextWishId++, createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis())
+            val targetList = listIdMap[wish.listId] ?: _currentListId.value
+            _wishes.value += wish.copy(
+                id = nextWishId++,
+                listId = targetList,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
             imported++
         }
         val carr = root.optJSONArray("categories")
@@ -302,7 +392,7 @@ object ShiwuRepository {
     fun exportCsv(): String = synchronized(lock) {
         val sb = StringBuilder()
         sb.append(csvHeaders.joinToString(",") { csvEscape(it) }).append("\n")
-        activeItems().forEach { item ->
+        itemsOf(_currentListId.value).forEach { item ->
             sb.append(
                 listOf(
                     item.name,
@@ -377,7 +467,8 @@ object ShiwuRepository {
                 retired = retired,
                 retirementDate = retirement,
                 createdAt = now,
-                updatedAt = now
+                updatedAt = now,
+                listId = _currentListId.value
             )
             imported++
         }
@@ -386,7 +477,7 @@ object ShiwuRepository {
 
     /** 当前在用物品引用的照片文件（去重），供 ZIP 导出使用 */
     fun exportPhotoFiles(): List<File> = synchronized(lock) {
-        activeItems()
+        itemsOf(_currentListId.value)
             .flatMap { it.photos }
             .distinct()
             .mapNotNull { runCatching { File(it) }.getOrNull() }
@@ -440,17 +531,36 @@ object ShiwuRepository {
             val root = JSONObject(f.readText())
             nextItemId = root.optLong("nextItemId", 1L)
             nextWishId = root.optLong("nextWishId", 1L)
-            val items = ArrayList<Item>()
+            var items = ArrayList<Item>()
             val arr = root.optJSONArray("items") ?: JSONArray()
             for (i in 0 until arr.length()) items.add(itemFromJson(arr.getJSONObject(i)))
-            val wishes = ArrayList<Wish>()
+            var wishes = ArrayList<Wish>()
             val warr = root.optJSONArray("wishes") ?: JSONArray()
             for (i in 0 until warr.length()) wishes.add(wishFromJson(warr.getJSONObject(i)))
+            val lists = ArrayList<InventoryList>()
+            val larr = root.optJSONArray("lists")
+            if (larr != null) {
+                for (i in 0 until larr.length()) lists.add(listFromJson(larr.getJSONObject(i)))
+            }
+            if (lists.isEmpty()) {
+                // 旧版本数据迁移：创建默认清单「我的物品」，归属全部物品/心愿
+                lists.add(InventoryList(1, "我的物品"))
+                nextListId = 2
+                items = ArrayList(items.map { it.copy(listId = 1) })
+                wishes = ArrayList(wishes.map { it.copy(listId = 1) })
+            } else {
+                nextListId = (lists.maxOfOrNull { it.id } ?: 0L) + 1
+                // 兜底：缺失/未知清单归属的物品落到第一份清单
+                val firstId = lists.first().id
+                items = ArrayList(items.map { if (lists.any { l -> l.id == it.listId }) it else it.copy(listId = firstId) })
+                wishes = ArrayList(wishes.map { if (lists.any { l -> l.id == it.listId }) it else it.copy(listId = firstId) })
+            }
             val categories = ArrayList<String>()
             val carr = root.optJSONArray("categories")
             if (carr != null) {
                 for (i in 0 until carr.length()) categories.add(carr.getString(i))
             }
+            _lists.value = lists
             _items.value = items
             _wishes.value = wishes
             if (categories.isNotEmpty()) _categories.value = categories
@@ -464,8 +574,10 @@ object ShiwuRepository {
         val root = JSONObject().apply {
             put("nextItemId", nextItemId)
             put("nextWishId", nextWishId)
+            put("nextListId", nextListId)
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
+            put("lists", JSONArray(_lists.value.map { it.toJson() }))
             put("categories", JSONArray(_categories.value))
         }
         f.writeText(root.toString(1))
@@ -495,6 +607,8 @@ object ShiwuRepository {
         )
         nextItemId = 6
         nextWishId = 6
+        nextListId = 2
+        _lists.value = listOf(InventoryList(1, "我的物品"))
         _items.value = items
         _wishes.value = wishes
         _categories.value = defaultCategories

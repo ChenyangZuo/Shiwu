@@ -38,6 +38,7 @@ import com.zzzcy.shiwu.ui.screens.HomeScreen
 import com.zzzcy.shiwu.ui.screens.CategoryManagementScreen
 import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
+import com.zzzcy.shiwu.ui.screens.ListSwitcherScreen
 import com.zzzcy.shiwu.ui.screens.ProfileScreen
 import com.zzzcy.shiwu.ui.screens.StatsScreen
 import com.zzzcy.shiwu.ui.screens.TrashScreen
@@ -53,6 +54,10 @@ enum class FormKind { ITEM, WISH }
 fun ShiwuApp() {
     val items by ShiwuRepository.items.collectAsState()
     val wishes by ShiwuRepository.wishes.collectAsState()
+    val currentListId by ShiwuRepository.currentListId.collectAsState()
+    val lists by ShiwuRepository.lists.collectAsState()
+    val currentItems = remember(items, currentListId) { items.filter { it.listId == currentListId } }
+    val currentWishes = remember(wishes, currentListId) { wishes.filter { it.listId == currentListId } }
 
     var currentTab by rememberSaveable { mutableStateOf(DockTab.HOME) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -64,6 +69,7 @@ fun ShiwuApp() {
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showCategories by rememberSaveable { mutableStateOf(false) }
     var showTheme by rememberSaveable { mutableStateOf(false) }
+    var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
 
     // 覆盖层内容在退出动画期间保留：visible 状态被置空时，动画仍能带着旧内容滑出
@@ -83,8 +89,11 @@ fun ShiwuApp() {
     }
 
     // 返回手势优先级：表单 > 详情 > 回收站 > 默认
-    BackHandler(enabled = formKind != null || detailItemId != null || showTrash || showCategories || showTheme) {
+    BackHandler(
+        enabled = formKind != null || detailItemId != null || showTrash || showCategories || showTheme || showListSwitcher
+    ) {
         when {
+            showListSwitcher -> showListSwitcher = false
             formKind != null -> closeForm()
             detailItemId != null -> detailItemId = null
             showTrash -> showTrash = false
@@ -110,11 +119,13 @@ fun ShiwuApp() {
             ) { tab ->
                 when (tab) {
                     DockTab.HOME -> HomeScreen(
-                        items = items,
+                        items = currentItems,
                         query = query,
                         onQueryChange = { query = it },
                         retiredFilter = retiredFilter,
                         onFilterChange = { retiredFilter = it },
+                        listName = lists.firstOrNull { it.id == currentListId }?.name ?: "我的物品",
+                        onListClick = { showListSwitcher = true },
                         onItemClick = { detailItemId = it },
                         onAddClick = {
                             formKind = FormKind.ITEM
@@ -123,7 +134,7 @@ fun ShiwuApp() {
                         }
                     )
                     DockTab.WISHLIST -> WishlistScreen(
-                        wishes = wishes,
+                        wishes = currentWishes,
                         onWishClick = {
                             formKind = FormKind.WISH
                             editingWishId = it
@@ -139,7 +150,7 @@ fun ShiwuApp() {
                             detailItemId = newItemId
                         }
                     )
-                    DockTab.STATS -> StatsScreen(items = items)
+                    DockTab.STATS -> StatsScreen(items = currentItems)
                     DockTab.PROFILE -> ProfileScreen(
                         items = items,
                         wishes = wishes,
@@ -258,6 +269,21 @@ fun ShiwuApp() {
             ) + fadeOut(tween(durationMillis = 180))
         ) {
             ThemeScreen(onClose = { showTheme = false })
+        }
+
+        // 清单切换面板
+        AnimatedVisibility(
+            visible = showListSwitcher,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
+            ListSwitcherScreen(onClose = { showListSwitcher = false })
         }
 
         // 新增 / 编辑表单（底部滑入）

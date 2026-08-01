@@ -72,6 +72,8 @@ fun HomeScreen(
     onQueryChange: (String) -> Unit,
     retiredFilter: RetiredFilter,
     onFilterChange: (RetiredFilter) -> Unit,
+    listName: String,
+    onListClick: () -> Unit,
     onItemClick: (Long) -> Unit,
     onAddClick: () -> Unit
 ) {
@@ -97,7 +99,8 @@ fun HomeScreen(
     ) {
         AppHeader(
             eyebrow = "Shiwu",
-            title = "我的物品",
+            title = listName,
+            titleClick = onListClick,
             actions = listOf(
                 {
                     HeaderIconButton(Icons.Outlined.Share, "分享") {

@@ -308,11 +308,11 @@ fun ProfileScreen(
             title = { Text("导出数据") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ImportOption("CSV（纯文字）", "Excel / WPS 可直接打开") {
+                    ImportOption("CSV（纯文字）", "当前清单 · Excel / WPS 可直接打开") {
                         showExportDialog = false
                         exportCsv()
                     }
-                    ImportOption("CSV + 照片（ZIP）", "内含 items.csv 与 photos/ 照片") {
+                    ImportOption("CSV + 照片（ZIP）", "当前清单 · 内含 items.csv 与 photos/ 照片") {
                         showExportDialog = false
                         exportZip()
                     }

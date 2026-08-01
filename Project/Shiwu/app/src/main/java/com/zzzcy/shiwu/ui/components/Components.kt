@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
@@ -72,7 +73,8 @@ fun AppHeader(
     eyebrow: String,
     title: String,
     actions: List<@Composable () -> Unit>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    titleClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
@@ -90,13 +92,27 @@ fun AppHeader(
                 letterSpacing = 1.4.sp
             )
             Spacer(Modifier.height(2.dp))
-            Text(
-                text = title,
-                fontFamily = SerifFamily,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 24.sp,
-                color = Fg
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(enabled = titleClick != null) { titleClick?.invoke() }
+            ) {
+                Text(
+                    text = title,
+                    fontFamily = SerifFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 24.sp,
+                    color = Fg
+                )
+                if (titleClick != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.ArrowDropDown,
+                        contentDescription = "切换清单",
+                        tint = Muted,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             actions.forEach { action -> action() }
