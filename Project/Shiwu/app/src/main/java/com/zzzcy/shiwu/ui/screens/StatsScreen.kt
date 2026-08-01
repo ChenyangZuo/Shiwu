@@ -60,7 +60,7 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.Surface
 import com.zzzcy.shiwu.ui.theme.Warn
-import java.util.Locale
+import com.zzzcy.shiwu.data.formatPrice
 
 private val chartColors: List<Color>
     @androidx.compose.runtime.Composable get() = listOf(Accent, Warn, Accent2, ChipFg, Border2)
@@ -105,7 +105,7 @@ fun StatsScreen(items: List<Item>) {
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 TrendPanel(trend, totalValue)
-                CategoryPanel(shares)
+                CategoryPanel(shares, items.count { !it.deleted })
                 TopCostPanel(top)
             }
         }
@@ -131,7 +131,7 @@ private fun TrendPanel(trend: List<Pair<String, Double>>, totalValue: Double) {
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "¥${"%,.0f".format(Locale.US, totalValue)}",
+                        text = "¥${totalValue.formatPrice()}",
                         fontFamily = NumFamily,
                         fontSize = 11.sp,
                         color = Muted,
@@ -230,7 +230,7 @@ private fun TrendChart(data: List<Pair<String, Double>>) {
 }
 
 @Composable
-private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
+private fun CategoryPanel(shares: List<Triple<String, Int, Double>>, totalCount: Int) {
     CardSurface(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
             Row(
@@ -261,7 +261,7 @@ private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
                 )
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    DonutChart(shares)
+                    DonutChart(shares, totalCount)
                     Spacer(Modifier.width(16.dp))
                     Column(
                         modifier = Modifier.weight(1f),
@@ -282,7 +282,7 @@ private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
                                     modifier = Modifier.weight(1f)
                                 )
                                 Text(
-                                    text = "¥${"%,.0f".format(Locale.US, share.second)}",
+                                    text = "${share.second} 件",
                                     fontFamily = NumFamily,
                                     fontSize = 10.5.sp,
                                     color = Muted
@@ -307,8 +307,7 @@ private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
 }
 
 @Composable
-private fun DonutChart(shares: List<Triple<String, Double, Double>>) {
-    val totalCount = ShiwuRepository.activeItems().size
+private fun DonutChart(shares: List<Triple<String, Int, Double>>, totalCount: Int) {
     val colors = chartColors
     val bg2 = Bg2
     Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
