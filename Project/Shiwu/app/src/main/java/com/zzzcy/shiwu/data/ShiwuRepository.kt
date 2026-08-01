@@ -686,6 +686,8 @@ object ShiwuRepository {
         val idx = csvHeaders.mapNotNull { h -> header.indexOf(h).takeIf { it >= 0 }?.let { h to it } }.toMap()
         val now = System.currentTimeMillis()
         val itemsToInsert = ArrayList<ItemEntity>()
+        val categoriesToInsert = ArrayList<CategoryEntity>()
+        val existingCategories = _categories.value.map { it.name }.toMutableSet()
         rows.drop(1).forEach { row ->
             fun col(name: String): String = idx[name]?.let { row.getOrNull(it)?.trim() ?: "" } ?: ""
             val name = col("名称")
@@ -698,10 +700,15 @@ object ShiwuRepository {
                 null
             }
             val photoPath = col("照片文件名").let { photoMap[it] }
+            val categoryName = col("分类").ifBlank { "未分类" }
+            if (categoryName !in existingCategories) {
+                categoriesToInsert.add(Category(categoryName, defaultIconKeyForCategory(categoryName)).toEntity())
+                existingCategories.add(categoryName)
+            }
             val item = Item(
                 id = nextItemId++,
                 name = name,
-                category = col("分类").ifBlank { "未分类" },
+                category = categoryName,
                 price = col("价格").toDoubleOrNull() ?: 0.0,
                 purchaseDate = runCatching { LocalDate.parse(col("购入日期")).toEpochDay() }
                     .getOrDefault(LocalDate.now().toEpochDay()),
@@ -716,7 +723,13 @@ object ShiwuRepository {
             itemsToInsert.add(item.toEntity())
         }
         persistCounters()
-        scope.launch { if (itemsToInsert.isNotEmpty()) db?.itemDao()?.upsertAll(itemsToInsert) }
+        scope.launch {
+            val d = db ?: return@launch
+            d.withTransaction {
+                if (categoriesToInsert.isNotEmpty()) d.categoryDao().upsertAll(categoriesToInsert)
+                if (itemsToInsert.isNotEmpty()) d.itemDao().upsertAll(itemsToInsert)
+            }
+        }
         return itemsToInsert.size
     }
 
