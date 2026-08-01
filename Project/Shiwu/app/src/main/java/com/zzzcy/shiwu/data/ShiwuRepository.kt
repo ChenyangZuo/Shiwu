@@ -10,6 +10,7 @@ import org.json.JSONObject
 import com.zzzcy.shiwu.util.csvEscape
 import com.zzzcy.shiwu.util.parseCsv
 import java.io.File
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.Locale
@@ -71,10 +72,15 @@ object ShiwuRepository {
                 prefs?.edit()?.putLong("first_launch_day", firstLaunchDay)?.apply()
             }
             load()
-            // 恢复上次使用的清单；若已被删除则回退到第一份
+            // 恢复上次使用的清单：已删除或已锁定的不回退展示，改选第一份未锁定清单；
+            // 若全部清单都锁定，则指向无效 id（-1），界面不展示任何清单内容
             val savedListId = prefs?.getLong("current_list_id", -1L) ?: -1L
-            val valid = _lists.value.any { it.id == savedListId }
-            _currentListId.value = if (valid) savedListId else (_lists.value.firstOrNull()?.id ?: 1L)
+            val savedValidAndUnlocked =
+                _lists.value.any { it.id == savedListId } && !isListLocked(savedListId)
+            _currentListId.value = when {
+                savedValidAndUnlocked -> savedListId
+                else -> _lists.value.firstOrNull { !isListLocked(it.id) }?.id ?: -1L
+            }
             initialized = true
         }
     }
@@ -115,6 +121,8 @@ object ShiwuRepository {
     fun deleteList(id: Long): Boolean = mutate {
         if (_lists.value.size <= 1) return@mutate false
         _lists.value = _lists.value.filterNot { it.id == id }
+        prefs?.edit()?.remove(lockPrefKey(id))?.apply()
+        _unlockedLists.value = _unlockedLists.value - id
         _items.value = _items.value.map {
             if (it.listId == id) it.copy(deleted = true, deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) else it
         }
@@ -130,6 +138,94 @@ object ShiwuRepository {
         if (_lists.value.none { it.id == id }) return
         _currentListId.value = id
         prefs?.edit()?.putLong("current_list_id", id)?.apply()
+    }
+
+    // ---------- 清单锁（仅应用层鉴权，不加密原始数据） ----------
+
+    data class ListLock(
+        val enabled: Boolean,
+        val passwordHash: String,
+        val fingerprint: Boolean
+    )
+
+    private fun lockPrefKey(listId: Long) = "list_lock_$listId"
+
+    private fun sha256(text: String): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        return md.digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+
+    /** 读取清单锁配置（未设置返回 null） */
+    fun listLock(listId: Long): ListLock? {
+        val raw = prefs?.getString(lockPrefKey(listId), null) ?: return null
+        return try {
+            val o = JSONObject(raw)
+            ListLock(
+                enabled = o.optBoolean("enabled", false),
+                passwordHash = o.optString("passwordHash", ""),
+                fingerprint = o.optBoolean("fingerprint", false)
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun isListLocked(listId: Long): Boolean = listLock(listId)?.enabled == true
+
+    private fun saveLock(listId: Long, lock: ListLock) {
+        val o = JSONObject().apply {
+            put("enabled", lock.enabled)
+            put("passwordHash", lock.passwordHash)
+            put("fingerprint", lock.fingerprint)
+        }
+        prefs?.edit()?.putString(lockPrefKey(listId), o.toString())?.apply()
+    }
+
+    /** 设置或修改清单密码（同时开启保护），密码至少 4 位 */
+    fun setListPassword(listId: Long, password: String): Boolean {
+        val trimmed = password.trim()
+        if (trimmed.length < 4) return false
+        val old = listLock(listId)
+        saveLock(
+            listId,
+            ListLock(
+                enabled = true,
+                passwordHash = sha256(trimmed),
+                fingerprint = old?.fingerprint ?: false
+            )
+        )
+        return true
+    }
+
+    /** 校验清单密码 */
+    fun verifyListPassword(listId: Long, password: String): Boolean {
+        val lock = listLock(listId) ?: return false
+        return lock.enabled && lock.passwordHash == sha256(password.trim())
+    }
+
+    /** 启用/关闭指纹解锁（须先设置密码） */
+    fun setListFingerprint(listId: Long, enabled: Boolean) {
+        val lock = listLock(listId) ?: return
+        if (!lock.enabled || lock.passwordHash.isEmpty()) return
+        saveLock(listId, lock.copy(fingerprint = enabled))
+    }
+
+    /** 关闭保护（需校验当前密码） */
+    fun disableListLock(listId: Long, password: String): Boolean {
+        if (!verifyListPassword(listId, password)) return false
+        prefs?.edit()?.remove(lockPrefKey(listId))?.apply()
+        _unlockedLists.value = _unlockedLists.value - listId
+        return true
+    }
+
+    /** 本次会话内已解锁的清单（重启后清空，需重新鉴权） */
+    private val _unlockedLists = MutableStateFlow<Set<Long>>(emptySet())
+    val unlockedLists: StateFlow<Set<Long>> = _unlockedLists.asStateFlow()
+
+    fun isListUnlocked(listId: Long): Boolean = listId in _unlockedLists.value
+
+    fun unlockList(listId: Long) {
+        _unlockedLists.value = _unlockedLists.value + listId
     }
 
     /** 使用天数（自首次启动起） */

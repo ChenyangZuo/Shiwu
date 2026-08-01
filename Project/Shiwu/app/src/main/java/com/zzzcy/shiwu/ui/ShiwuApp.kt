@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +74,13 @@ fun ShiwuApp() {
     var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
     var showNicknameSetup by remember { mutableStateOf(ShiwuRepository.needsNicknameSetup) }
+
+    // 当前清单无效（如全部清单均被锁定）时，自动打开清单面板选择/解锁
+    LaunchedEffect(currentListId, lists.size) {
+        if (lists.isNotEmpty() && lists.none { it.id == currentListId }) {
+            showListSwitcher = true
+        }
+    }
 
     // 覆盖层内容在退出动画期间保留：visible 状态被置空时，动画仍能带着旧内容滑出
     val detailContentId = remember { mutableStateOf<Long?>(null) }
@@ -129,7 +137,7 @@ fun ShiwuApp() {
                         onQueryChange = { query = it },
                         retiredFilter = retiredFilter,
                         onFilterChange = { retiredFilter = it },
-                        listName = lists.firstOrNull { it.id == currentListId }?.name ?: "我的物品",
+                        listName = lists.firstOrNull { it.id == currentListId }?.name ?: "选择清单",
                         onListClick = { showListSwitcher = true },
                         onItemClick = { detailItemId = it },
                         onAddClick = {

@@ -1,17 +1,17 @@
 package com.zzzcy.shiwu
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.fragment.app.FragmentActivity
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.ShiwuApp
 import com.zzzcy.shiwu.ui.theme.ShiwuTheme
 import com.zzzcy.shiwu.ui.theme.ThemeMode
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
