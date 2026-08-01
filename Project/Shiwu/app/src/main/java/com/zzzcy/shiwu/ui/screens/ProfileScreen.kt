@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudSync
-import androidx.compose.material.icons.outlined.CurrencyYuan
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
@@ -179,7 +178,6 @@ fun ProfileScreen(
             MenuGroup(
                 modifier = Modifier.padding(top = 12.dp),
                 rows = listOf(
-                    MenuRowData("货币与单位", "人民币 · CNY", Icons.Outlined.CurrencyYuan),
                     MenuRowData("分类管理", "数码 / 服饰 / 阅读 / 家居 …", Icons.Outlined.GridView),
                     MenuRowData("外观主题", "当前：暖白 · 跟随系统", Icons.Outlined.DarkMode),
                     MenuRowData(
