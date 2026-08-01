@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,11 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +55,7 @@ import com.zzzcy.shiwu.data.formatDate
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
+import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
@@ -85,9 +87,15 @@ fun ItemDetailScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Surface)
+            .shadow(18.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = Color(0x33000000))
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(Surface, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -212,7 +220,7 @@ fun ItemDetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(46.dp)
-                        .background(if (item.retired) AccentSoft else Color.Transparent, RoundedCornerShape(14.dp))
+                        .background(if (item.retired) AccentSoft else Bg2, RoundedCornerShape(14.dp))
                         .clip(RoundedCornerShape(14.dp))
                         .clickable { showRetirePicker = true },
                     contentAlignment = Alignment.Center

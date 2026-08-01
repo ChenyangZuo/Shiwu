@@ -165,8 +165,14 @@ fun ShiwuApp() {
         // 物品详情
         AnimatedVisibility(
             visible = detailItemId != null,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(160))
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
         ) {
             detailItemId?.let { id ->
                 ItemDetailScreen(
@@ -184,8 +190,14 @@ fun ShiwuApp() {
         // 回收站
         AnimatedVisibility(
             visible = showTrash,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(160))
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
         ) {
             TrashScreen(onClose = { showTrash = false })
         }

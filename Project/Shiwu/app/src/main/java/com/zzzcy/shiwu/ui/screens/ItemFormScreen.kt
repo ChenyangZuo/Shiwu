@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -620,6 +622,7 @@ internal fun FormTextField(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CategoryField(
     selected: String,
@@ -630,8 +633,11 @@ internal fun CategoryField(
         FieldLabel("分类", required = true)
         Spacer(Modifier.height(6.dp))
         val chips = if (selected !in knownCategories) knownCategories + selected else knownCategories
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            chips.take(6).forEach { chip ->
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            chips.forEach { chip ->
                 PillChip(chip, active = chip == selected) { onSelect(chip) }
             }
             PillChip("+ 新建", active = false, onClick = onCreateNew)
