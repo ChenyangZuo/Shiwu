@@ -284,6 +284,13 @@ enum class DockTab(val label: String) {
     PROFILE("我的")
 }
 
+/** 首页退役物品过滤 */
+enum class RetiredFilter(val label: String) {
+    ALL("全部"),
+    ACTIVE("使用中"),
+    RETIRED("已退役")
+}
+
 /** 底部悬浮 Dock */
 @Composable
 fun Dock(

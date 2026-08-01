@@ -1,5 +1,11 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,32 +17,55 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zzzcy.shiwu.data.Item
+import com.zzzcy.shiwu.data.ShiwuRepository
+import com.zzzcy.shiwu.data.formatDate
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.dashedBorder
@@ -53,10 +82,94 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Surface
+import com.zzzcy.shiwu.util.PhotoUtils
+import java.io.File
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
-/** 新增 / 编辑 物品表单（第一版为静态展示） */
+val knownCategories = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemFormScreen(onClose: () -> Unit) {
+fun ItemFormScreen(
+    editingItem: Item?,
+    onClose: () -> Unit,
+    onSaved: (Long) -> Unit
+) {
+    val context = LocalContext.current
+
+    var name by remember(editingItem?.id) { mutableStateOf(editingItem?.name ?: "") }
+    var category by remember(editingItem?.id) { mutableStateOf(editingItem?.category ?: "数码") }
+    var priceText by remember(editingItem?.id) {
+        mutableStateOf(if (editingItem != null && editingItem.price > 0) editingItem.price.toString() else "")
+    }
+    var purchaseDate by remember(editingItem?.id) {
+        mutableStateOf(LocalDate.ofEpochDay(editingItem?.purchaseDate ?: LocalDate.now().toEpochDay()))
+    }
+    var note by remember(editingItem?.id) { mutableStateOf(editingItem?.note ?: "") }
+    var photos by remember(editingItem?.id) { mutableStateOf(editingItem?.photos ?: emptyList()) }
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showNewCategory by remember { mutableStateOf(false) }
+    var newCategoryText by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    // 拍照暂存文件
+    var cameraTemp by remember { mutableStateOf<File?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { ok ->
+        if (ok) {
+            PhotoUtils.moveCameraPhoto(context, cameraTemp)?.let { path ->
+                if (photos.size < 6) photos = photos + path
+            }
+        }
+        cameraTemp = null
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 6)
+    ) { uris: List<Uri> ->
+        val picked = uris.mapNotNull { PhotoUtils.copyToInternal(context, it) }
+        photos = (photos + picked).take(6)
+    }
+
+    fun save() {
+        val price = priceText.toDoubleOrNull()
+        when {
+            name.isBlank() -> error = "请输入物品名称"
+            price == null || price < 0 -> error = "请输入有效的价格（≥ 0）"
+            category.isBlank() -> error = "请选择分类"
+            else -> {
+                error = null
+                if (editingItem == null) {
+                    val id = ShiwuRepository.addItem(
+                        name = name.trim(),
+                        category = category,
+                        price = price,
+                        purchaseDate = purchaseDate.toEpochDay(),
+                        photos = photos,
+                        note = note.trim()
+                    )
+                    onSaved(id)
+                } else {
+                    ShiwuRepository.updateItem(
+                        editingItem.copy(
+                            name = name.trim(),
+                            category = category,
+                            price = price,
+                            purchaseDate = purchaseDate.toEpochDay(),
+                            photos = photos,
+                            note = note.trim()
+                        )
+                    )
+                    onSaved(editingItem.id)
+                }
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -69,7 +182,6 @@ fun ItemFormScreen(onClose: () -> Unit) {
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // 顶部拖拽条 + 导航
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
@@ -86,7 +198,7 @@ fun ItemFormScreen(onClose: () -> Unit) {
             ) {
                 HeaderIconButton(Icons.Outlined.Close, "取消", onClick = onClose)
                 Text(
-                    text = "新增物品",
+                    text = if (editingItem == null) "新增物品" else "编辑物品",
                     fontFamily = SerifFamily,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -100,26 +212,100 @@ fun ItemFormScreen(onClose: () -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
+                    .imePadding()
                     .padding(horizontal = 18.dp)
                     .padding(bottom = 150.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                PhotoField()
-                TextField(label = "名称", required = "必填", placeholder = "例:Sony WH-1000XM5 无线降噪耳机", focused = true)
-                CategoryField()
+                PhotoField(
+                    photos = photos,
+                    onPickGallery = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onTakePhoto = {
+                        val (file, uri) = PhotoUtils.createCameraUri(context)
+                        cameraTemp = file
+                        cameraLauncher.launch(uri)
+                    },
+                    onRemove = { index -> photos = photos.filterIndexed { i, _ -> i != index } }
+                )
+                FormTextField(
+                    label = "名称",
+                    required = true,
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = "例:Sony WH-1000XM5 无线降噪耳机",
+                    focused = true
+                )
+                CategoryField(
+                    selected = category,
+                    onSelect = { category = it },
+                    onCreateNew = { showNewCategory = true }
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(Modifier.weight(1f)) {
-                        TextField(label = "价格", required = "必填", unit = "¥", placeholder = "0.00")
+                        FormTextField(
+                            label = "价格",
+                            required = true,
+                            value = priceText,
+                            onValueChange = { input ->
+                                if (input.length <= 10 && (input.isEmpty() || input.matches(Regex("[0-9]*\\.?[0-9]{0,2}")))) {
+                                    priceText = input
+                                }
+                            },
+                            placeholder = "0.00",
+                            unit = "¥",
+                            keyboardType = KeyboardType.Decimal
+                        )
                     }
                     Column(Modifier.weight(1f)) {
-                        TextField(label = "购入日期", value = "2026-08-01", withCalendar = true)
+                        Column {
+                            FieldLabel("购入日期")
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .border(1.dp, Border, RoundedCornerShape(10.dp))
+                                    .background(Surface, RoundedCornerShape(10.dp))
+                                    .clickable { showDatePicker = true }
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = purchaseDate.formatDate(),
+                                    fontSize = 13.sp,
+                                    fontFamily = NumFamily,
+                                    color = Fg,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.Outlined.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = Muted2,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                     }
                 }
+                FormTextField(
+                    label = "备注",
+                    required = false,
+                    value = note,
+                    onValueChange = { note = it },
+                    placeholder = "选填：购买渠道、保修信息等"
+                )
                 CalcHint()
+
+                if (error != null) {
+                    Text(
+                        text = error ?: "",
+                        fontSize = 11.sp,
+                        color = Danger
+                    )
+                }
             }
         }
 
-        // 底部 CTA（上缘渐变遮罩）
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -138,23 +324,115 @@ fun ItemFormScreen(onClose: () -> Unit) {
                     .height(46.dp)
                     .shadow(8.dp, RoundedCornerShape(14.dp), spotColor = Accent.copy(alpha = 0.5f))
                     .background(Accent, RoundedCornerShape(14.dp))
-                    .clickable(onClick = {}),
+                    .clickable { save() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "添加物品",
+                    text = if (editingItem == null) "添加物品" else "保存修改",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = OnAccent,
                     letterSpacing = 0.5.sp
                 )
             }
+            if (editingItem != null) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .dashedBorder(Danger, cornerRadius = 14.dp)
+                        .clickable { showDeleteConfirm = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "删除物品",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Danger
+                    )
+                }
+            }
+        }
+
+        if (showDatePicker) {
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = purchaseDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        state.selectedDateMillis?.let {
+                            purchaseDate = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+                        }
+                        showDatePicker = false
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                }
+            ) {
+                DatePicker(state = state)
+            }
+        }
+
+        if (showNewCategory) {
+            AlertDialog(
+                onDismissRequest = { showNewCategory = false },
+                title = { Text("新建分类") },
+                text = {
+                    Column {
+                        BasicTextField(
+                            value = newCategoryText,
+                            onValueChange = { newCategoryText = it },
+                            textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                            cursorBrush = SolidColor(Accent),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Bg2, RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newCategoryText.isNotBlank()) {
+                            category = newCategoryText.trim()
+                            newCategoryText = ""
+                            showNewCategory = false
+                        }
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewCategory = false }) { Text("取消") }
+                }
+            )
+        }
+
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = { Text("删除物品") },
+                text = { Text("「${name}」将移入回收站，可稍后恢复。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        editingItem?.let { ShiwuRepository.softDeleteItem(it.id) }
+                        showDeleteConfirm = false
+                        onClose()
+                    }) { Text("移入回收站", color = Danger) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                }
+            )
         }
     }
 }
 
 @Composable
-private fun FieldLabel(label: String, hint: String?, color: Color = Muted) {
+internal fun FieldLabel(label: String, required: Boolean = false, hint: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -163,14 +441,21 @@ private fun FieldLabel(label: String, hint: String?, color: Color = Muted) {
         Text(
             text = label,
             fontSize = 11.sp,
-            color = color,
+            color = Muted,
             letterSpacing = 0.6.sp
         )
         if (hint != null) {
             Text(
                 text = hint,
                 fontSize = 11.sp,
-                color = if (color == Danger) Danger else Muted2,
+                color = Muted2,
+                letterSpacing = 0.2.sp
+            )
+        } else if (required) {
+            Text(
+                text = "必填",
+                fontSize = 11.sp,
+                color = Danger,
                 letterSpacing = 0.2.sp
             )
         }
@@ -178,15 +463,21 @@ private fun FieldLabel(label: String, hint: String?, color: Color = Muted) {
 }
 
 @Composable
-private fun PhotoField() {
+private fun PhotoField(
+    photos: List<String>,
+    onPickGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
+    onRemove: (Int) -> Unit
+) {
     Column {
-        FieldLabel("照片", "选填 · 最多 6 张")
+        FieldLabel("照片", hint = "选填 · 最多 6 张")
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
                 modifier = Modifier
                     .size(72.dp)
-                    .dashedBorder(Border2, cornerRadius = 10.dp),
+                    .dashedBorder(Border2, cornerRadius = 10.dp)
+                    .clickable(onClick = onPickGallery),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -205,30 +496,79 @@ private fun PhotoField() {
                     )
                 }
             }
-            repeat(2) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .dashedBorder(Border2, cornerRadius = 10.dp)
+                    .clickable(onClick = onTakePhoto),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Outlined.CameraAlt,
+                        contentDescription = null,
+                        tint = Muted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        text = "拍照",
+                        fontSize = 9.5.sp,
+                        color = Muted,
+                        letterSpacing = 0.6.sp
+                    )
+                }
+            }
+            photos.take(4).forEachIndexed { index, path ->
                 Box(
                     modifier = Modifier
                         .size(72.dp)
-                        .background(Bg2.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
-                        .border(1.dp, Border, RoundedCornerShape(10.dp))
-                )
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Bg2)
+                ) {
+                    val bitmap = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(20.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(topEnd = 10.dp, bottomStart = 10.dp))
+                            .clickable { onRemove(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "移除",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TextField(
+internal fun FormTextField(
     label: String,
-    required: String? = null,
+    required: Boolean,
+    value: String,
+    onValueChange: (String) -> Unit,
     placeholder: String? = null,
-    value: String? = null,
     unit: String? = null,
-    focused: Boolean = false,
-    withCalendar: Boolean = false
+    keyboardType: KeyboardType = KeyboardType.Text,
+    focused: Boolean = false
 ) {
     Column {
-        FieldLabel(label, required?.let { "必填" }, color = if (required != null) Danger else Muted)
+        FieldLabel(label, required)
         Spacer(Modifier.height(6.dp))
         val shape = RoundedCornerShape(10.dp)
         Row(
@@ -236,7 +576,7 @@ private fun TextField(
                 .fillMaxWidth()
                 .height(42.dp)
                 .then(
-                    if (focused) {
+                    if (focused || value.isNotEmpty()) {
                         Modifier
                             .shadow(6.dp, shape, spotColor = Accent.copy(alpha = 0.12f), clip = false)
                             .border(1.dp, Accent, shape)
@@ -257,46 +597,44 @@ private fun TextField(
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            if (placeholder != null) {
-                Text(
-                    text = placeholder,
-                    fontSize = 13.sp,
-                    color = Muted2,
-                    maxLines = 1
+            Box(Modifier.weight(1f)) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    textStyle = TextStyle(fontSize = 13.sp, color = Fg),
+                    cursorBrush = SolidColor(Accent),
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
-            } else if (value != null) {
-                Text(
-                    text = value,
-                    fontSize = 13.sp,
-                    fontFamily = NumFamily,
-                    color = Fg
-                )
-            }
-            if (withCalendar) {
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    imageVector = Icons.Outlined.CalendarMonth,
-                    contentDescription = null,
-                    tint = Muted2,
-                    modifier = Modifier.size(14.dp)
-                )
+                if (value.isEmpty() && placeholder != null) {
+                    Text(
+                        text = placeholder,
+                        fontSize = 13.sp,
+                        color = Muted2,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CategoryField() {
+internal fun CategoryField(
+    selected: String,
+    onSelect: (String) -> Unit,
+    onCreateNew: () -> Unit
+) {
     Column {
-        FieldLabel("分类", "必选", color = Danger)
+        FieldLabel("分类", required = true)
         Spacer(Modifier.height(6.dp))
+        val chips = if (selected !in knownCategories) knownCategories + selected else knownCategories
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PillChip("数码", active = true)
-            PillChip("服饰", active = false)
-            PillChip("阅读", active = false)
-            PillChip("家居", active = false)
-            PillChip("收藏", active = false)
-            PillChip("+ 新建", active = false)
+            chips.take(6).forEach { chip ->
+                PillChip(chip, active = chip == selected) { onSelect(chip) }
+            }
+            PillChip("+ 新建", active = false, onClick = onCreateNew)
         }
     }
 }

@@ -1,7 +1,12 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,13 +37,20 @@ import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zzzcy.shiwu.data.Item
+import com.zzzcy.shiwu.data.ShiwuRepository
+import com.zzzcy.shiwu.data.Wish
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
@@ -55,9 +67,53 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
+import com.zzzcy.shiwu.util.PhotoUtils
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(
+    items: List<Item>,
+    wishes: List<Wish>,
+    onOpenTrash: () -> Unit
+) {
+    val context = LocalContext.current
+    val activeCount = items.count { !it.deleted }
+    val trashCount = items.count { it.deleted }
+    val wishCount = wishes.count { !it.purchased }
+    val backupInfo = remember(items, wishes) { ShiwuRepository.backupInfo() }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val text = try {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            } catch (_: Exception) { null }
+            if (text != null) {
+                val count = ShiwuRepository.importJson(text)
+                Toast.makeText(context, "导入成功：$count 条记录", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "导入失败：文件无法读取", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun exportData() {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_export_${System.currentTimeMillis()}.json")
+        f.writeText(ShiwuRepository.exportJson())
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, PhotoUtils.FILE_PROVIDER_AUTHORITY, f)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "导出数据"))
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -72,7 +128,7 @@ fun ProfileScreen() {
         )
 
         Column(Modifier.padding(horizontal = 18.dp)) {
-            ProfileHero()
+            ProfileHero(activeCount, wishCount, trashCount)
 
             Spacer(Modifier.height(8.dp))
 
@@ -80,56 +136,55 @@ fun ProfileScreen() {
                 rows = listOf(
                     MenuRowData(
                         "导入物品",
-                        "从 CSV / Excel / 旧版备份",
+                        "从 JSON / CSV 备份恢复",
                         Icons.Outlined.Download,
-                        Accent
+                        Accent,
+                        onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }
                     ),
                     MenuRowData(
                         "导出数据",
-                        "CSV / JSON / PDF 报表",
+                        "JSON 完整备份，可分享",
                         Icons.Outlined.Upload,
-                        Accent
+                        Accent,
+                        onClick = ::exportData
                     ),
                     MenuRowData(
                         "自动备份",
-                        "本地快照 · 每日导出 JSON",
+                        "本地快照 · 点击立即备份",
                         Icons.Outlined.CloudSync,
                         null,
-                        badge = "已开启"
+                        badge = "已开启",
+                        onClick = {
+                            ShiwuRepository.createBackup()
+                            Toast.makeText(context, "备份完成", Toast.LENGTH_SHORT).show()
+                        }
                     ),
                     MenuRowData(
                         "回收站",
-                        "12 件 · 30 天后自动清除",
+                        "$trashCount 件 · 可恢复或彻底删除",
                         Icons.Outlined.Delete,
                         Warn,
-                        badge = "12"
+                        badge = "$trashCount",
+                        onClick = onOpenTrash
                     )
                 )
             )
 
-            StorageCard()
+            StorageCard(
+                count = backupInfo.count,
+                sizeBytes = backupInfo.totalSizeBytes,
+                lastAt = backupInfo.lastBackupAt
+            )
 
             MenuGroup(
                 modifier = Modifier.padding(top = 12.dp),
                 rows = listOf(
-                    MenuRowData(
-                        "货币与单位",
-                        "人民币 · CNY",
-                        Icons.Outlined.CurrencyYuan
-                    ),
-                    MenuRowData(
-                        "分类管理",
-                        "数码 / 服饰 / 阅读 / 家居 …",
-                        Icons.Outlined.GridView
-                    ),
-                    MenuRowData(
-                        "外观主题",
-                        "当前：暖白 · 跟随系统",
-                        Icons.Outlined.DarkMode
-                    ),
+                    MenuRowData("货币与单位", "人民币 · CNY", Icons.Outlined.CurrencyYuan),
+                    MenuRowData("分类管理", "数码 / 服饰 / 阅读 / 家居 …", Icons.Outlined.GridView),
+                    MenuRowData("外观主题", "当前：暖白 · 跟随系统", Icons.Outlined.DarkMode),
                     MenuRowData(
                         "关于拾物",
-                        "v0.1.0 · Made with care",
+                        "v${appVersion()} · Made with care",
                         Icons.Outlined.Info
                     )
                 )
@@ -141,7 +196,19 @@ fun ProfileScreen() {
 }
 
 @Composable
-private fun ProfileHero() {
+private fun appVersion(): String {
+    val context = LocalContext.current
+    return remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.1.0"
+        } catch (_: Exception) {
+            "0.1.0"
+        }
+    }
+}
+
+@Composable
+private fun ProfileHero(itemCount: Int, wishCount: Int, trashCount: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -182,9 +249,9 @@ private fun ProfileHero() {
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             listOf(
-                "24" to "物品",
-                "5" to "心愿",
-                "12" to "回收"
+                "$itemCount" to "物品",
+                "$wishCount" to "心愿",
+                "$trashCount" to "回收"
             ).forEach { (v, k) ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
@@ -211,8 +278,9 @@ private data class MenuRowData(
     val title: String,
     val subtitle: String,
     val icon: ImageVector,
-    val iconColor: androidx.compose.ui.graphics.Color? = null,
-    val badge: String? = null
+    val iconColor: Color? = null,
+    val badge: String? = null,
+    val onClick: (() -> Unit)? = null
 )
 
 @Composable
@@ -226,6 +294,7 @@ private fun MenuGroup(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(if (row.onClick != null) Modifier.clickable(onClick = row.onClick) else Modifier)
                         .padding(horizontal = 14.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -300,7 +369,7 @@ private fun MenuGroup(
 }
 
 @Composable
-private fun StorageCard() {
+private fun StorageCard(count: Int, sizeBytes: Long, lastAt: Long?) {
     CardSurface(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Column(Modifier.padding(14.dp)) {
             Row(
@@ -315,7 +384,7 @@ private fun StorageCard() {
                     color = Fg
                 )
                 Text(
-                    text = "3 / 10 份快照 · 42.8 MB",
+                    text = "$count 份快照 · ${formatSize(sizeBytes)}",
                     fontFamily = NumFamily,
                     fontSize = 11.sp,
                     color = Muted,
@@ -331,7 +400,7 @@ private fun StorageCard() {
             ) {
                 Box(
                     Modifier
-                        .fillMaxWidth(0.30f)
+                        .fillMaxWidth((count % 10).coerceAtMost(10) / 10f)
                         .height(6.dp)
                         .background(Brush.horizontalGradient(listOf(Accent, Accent2)), RoundedCornerShape(50))
                 )
@@ -342,7 +411,7 @@ private fun StorageCard() {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "上次备份 12 分钟前",
+                    text = if (lastAt != null) "上次备份 ${formatTime(lastAt)}" else "暂无备份",
                     fontSize = 10.5.sp,
                     color = Muted,
                     letterSpacing = 0.2.sp
@@ -365,3 +434,12 @@ private fun StorageCard() {
         }
     }
 }
+
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
+    bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+private fun formatTime(millis: Long): String =
+    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(millis))

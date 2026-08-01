@@ -3,14 +3,14 @@ package com.zzzcy.shiwu.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -25,32 +26,58 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.Dock
 import com.zzzcy.shiwu.ui.components.DockTab
 import com.zzzcy.shiwu.ui.components.Fab
+import com.zzzcy.shiwu.ui.components.RetiredFilter
 import com.zzzcy.shiwu.ui.screens.HomeScreen
+import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
 import com.zzzcy.shiwu.ui.screens.ProfileScreen
 import com.zzzcy.shiwu.ui.screens.StatsScreen
+import com.zzzcy.shiwu.ui.screens.TrashScreen
+import com.zzzcy.shiwu.ui.screens.WishFormScreen
 import com.zzzcy.shiwu.ui.screens.WishlistScreen
 import com.zzzcy.shiwu.ui.theme.Bg
 
-/** 应用根：底部 Dock 切换四个主屏，FAB 打开新增/编辑表单 */
+enum class FormKind { ITEM, WISH }
+
+/** 应用根：Tab 切换 + 详情页 / 表单 / 回收站 覆盖层 */
 @Composable
 fun ShiwuApp() {
+    val items by ShiwuRepository.items.collectAsState()
+    val wishes by ShiwuRepository.wishes.collectAsState()
+
     var currentTab by rememberSaveable { mutableStateOf(DockTab.HOME) }
-    var showForm by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var retiredFilter by rememberSaveable { mutableStateOf(RetiredFilter.ALL) }
+    var detailItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var formKind by rememberSaveable { mutableStateOf<FormKind?>(null) }
+    var editingItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var editingWishId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showTrash by rememberSaveable { mutableStateOf(false) }
+
+    fun closeForm() {
+        formKind = null
+        editingItemId = null
+        editingWishId = null
+    }
+
+    // 返回手势优先级：表单 > 详情 > 回收站 > 默认
+    BackHandler(enabled = formKind != null || detailItemId != null || showTrash) {
+        when {
+            formKind != null -> closeForm()
+            detailItemId != null -> detailItemId = null
+            showTrash -> showTrash = false
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Bg)
     ) {
-        // 表单打开时，系统返回手势/返回键只关闭表单，不退出应用
-        BackHandler(enabled = showForm) {
-            showForm = false
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -62,10 +89,39 @@ fun ShiwuApp() {
                 label = "tabContent"
             ) { tab ->
                 when (tab) {
-                    DockTab.HOME -> HomeScreen(onAddClick = { showForm = true })
-                    DockTab.WISHLIST -> WishlistScreen(onAddClick = { showForm = true })
-                    DockTab.STATS -> StatsScreen()
-                    DockTab.PROFILE -> ProfileScreen()
+                    DockTab.HOME -> HomeScreen(
+                        items = items,
+                        query = query,
+                        onQueryChange = { query = it },
+                        retiredFilter = retiredFilter,
+                        onFilterChange = { retiredFilter = it },
+                        onItemClick = { detailItemId = it },
+                        onAddClick = {
+                            formKind = FormKind.ITEM
+                            editingItemId = null
+                        }
+                    )
+                    DockTab.WISHLIST -> WishlistScreen(
+                        wishes = wishes,
+                        onWishClick = {
+                            formKind = FormKind.WISH
+                            editingWishId = it
+                        },
+                        onAddClick = {
+                            formKind = FormKind.WISH
+                            editingWishId = null
+                        },
+                        onPurchased = { newItemId ->
+                            formKind = null
+                            detailItemId = newItemId
+                        }
+                    )
+                    DockTab.STATS -> StatsScreen(items = items)
+                    DockTab.PROFILE -> ProfileScreen(
+                        items = items,
+                        wishes = wishes,
+                        onOpenTrash = { showTrash = true }
+                    )
                 }
             }
 
@@ -80,7 +136,19 @@ fun ShiwuApp() {
                     modifier = Modifier
                         .navigationBarsPadding()
                         .padding(end = 24.dp, bottom = 96.dp),
-                    onClick = { showForm = true }
+                    onClick = {
+                        when (currentTab) {
+                            DockTab.HOME -> {
+                                formKind = FormKind.ITEM
+                                editingItemId = null
+                            }
+                            DockTab.WISHLIST -> {
+                                formKind = FormKind.WISH
+                                editingWishId = null
+                            }
+                            else -> Unit
+                        }
+                    }
                 )
             }
 
@@ -94,9 +162,37 @@ fun ShiwuApp() {
             )
         }
 
-        // 新增物品表单：自底部滑入，关闭时向下滑出
+        // 物品详情
         AnimatedVisibility(
-            visible = showForm,
+            visible = detailItemId != null,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(160))
+        ) {
+            detailItemId?.let { id ->
+                ItemDetailScreen(
+                    itemId = id,
+                    onBack = { detailItemId = null },
+                    onEdit = {
+                        detailItemId = null
+                        formKind = FormKind.ITEM
+                        editingItemId = id
+                    }
+                )
+            }
+        }
+
+        // 回收站
+        AnimatedVisibility(
+            visible = showTrash,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(160))
+        ) {
+            TrashScreen(onClose = { showTrash = false })
+        }
+
+        // 新增 / 编辑表单（底部滑入）
+        AnimatedVisibility(
+            visible = formKind != null,
             enter = slideInVertically(
                 animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
                 initialOffsetY = { it }
@@ -106,7 +202,21 @@ fun ShiwuApp() {
                 targetOffsetY = { it }
             ) + fadeOut(tween(durationMillis = 180))
         ) {
-            ItemFormScreen(onClose = { showForm = false })
+            when (formKind) {
+                FormKind.ITEM -> ItemFormScreen(
+                    editingItem = editingItemId?.let { ShiwuRepository.itemById(it) },
+                    onClose = ::closeForm,
+                    onSaved = { id ->
+                        closeForm()
+                        detailItemId = id
+                    }
+                )
+                FormKind.WISH -> WishFormScreen(
+                    editingWish = editingWishId?.let { ShiwuRepository.wishById(it) },
+                    onClose = ::closeForm
+                )
+                null -> Unit
+            }
         }
     }
 }

@@ -21,6 +21,10 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -31,9 +35,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zzzcy.shiwu.data.MockData
+import com.zzzcy.shiwu.data.Item
+import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
@@ -43,6 +49,7 @@ import com.zzzcy.shiwu.ui.theme.Accent2
 import com.zzzcy.shiwu.ui.theme.AccentSoft
 import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
+import com.zzzcy.shiwu.ui.theme.Border2
 import com.zzzcy.shiwu.ui.theme.ChipFg
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Fg2
@@ -50,9 +57,19 @@ import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.Surface
+import com.zzzcy.shiwu.ui.theme.Warn
+import java.util.Locale
+
+private val chartColors = listOf(Accent, Warn, Accent2, ChipFg, Border2)
 
 @Composable
-fun StatsScreen() {
+fun StatsScreen(items: List<Item>) {
+    var range by remember { mutableStateOf(6) } // 1=本月, 6=近半年, 12=全年
+    val trend = remember(items, range) { ShiwuRepository.trendPoints(range) }
+    val shares = remember(items) { ShiwuRepository.categoryShares() }
+    val top = remember(items) { ShiwuRepository.topDayCosts(3) }
+    val totalValue = items.filter { !it.deleted }.sumOf { it.price }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -73,15 +90,15 @@ fun StatsScreen() {
                     .padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                PillChip("本月", active = false)
-                PillChip("近半年", active = true)
-                PillChip("全年", active = false)
+                PillChip("本月", active = range == 1) { range = 1 }
+                PillChip("近半年", active = range == 6) { range = 6 }
+                PillChip("全年", active = range == 12) { range = 12 }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TrendPanel()
-                CategoryPanel()
-                TopCostPanel()
+                TrendPanel(trend, totalValue)
+                CategoryPanel(shares)
+                TopCostPanel(top)
             }
         }
 
@@ -90,7 +107,7 @@ fun StatsScreen() {
 }
 
 @Composable
-private fun TrendPanel() {
+private fun TrendPanel(trend: List<Pair<String, Double>>, totalValue: Double) {
     CardSurface(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
             Row(
@@ -106,7 +123,7 @@ private fun TrendPanel() {
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "¥48,562",
+                        text = "¥${"%,.0f".format(Locale.US, totalValue)}",
                         fontFamily = NumFamily,
                         fontSize = 11.sp,
                         color = Muted,
@@ -114,7 +131,7 @@ private fun TrendPanel() {
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "+27.2%",
+                        text = "当前",
                         fontFamily = NumFamily,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -126,84 +143,69 @@ private fun TrendPanel() {
                 }
             }
             Spacer(Modifier.height(10.dp))
-            TrendChart()
+            TrendChart(trend)
         }
     }
 }
 
-/** 总价值趋势折线图（按设计稿 312×108 坐标等比绘制） */
 @Composable
-private fun TrendChart() {
-    val points = listOf(
-        8f to 82.8f,
-        67.2f to 71.4f,
-        126.4f to 61.2f,
-        185.6f to 45f,
-        244.8f to 36f,
-        304f to 20.4f
-    )
-    val labels = listOf("3月", "4月", "5月", "6月", "7月", "8月")
+private fun TrendChart(data: List<Pair<String, Double>>) {
+    val maxV = (data.maxOfOrNull { it.second } ?: 0.0).coerceAtLeast(1.0)
     Column {
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(120.dp)
         ) {
-            val sx = size.width / 312f
-            val sy = size.height / 108f
-            val scaled = { p: Pair<Float, Float> -> Offset(p.first * sx, p.second * sy) }
+            val stepX = size.width / (data.size - 1).coerceAtLeast(1)
+            val y0 = size.height * 0.92f
+            val yMax = size.height * 0.12f
+            val points = data.mapIndexed { i, (_, v) ->
+                Offset(i * stepX, y0 - (v / maxV).toFloat() * (y0 - yMax))
+            }
 
-            // 网格线
-            listOf(36f, 68f, 100f).forEachIndexed { i, y ->
+            // 网格
+            listOf(0.25f, 0.5f, 0.75f).forEach { f ->
+                val y = size.height * f
                 drawLine(
-                    color = Border.copy(alpha = if (i == 2) 0.8f else 0.45f),
-                    start = Offset(0f, y * sy),
-                    end = Offset(size.width, y * sy),
+                    color = Border.copy(alpha = 0.45f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
                     strokeWidth = 1f
                 )
             }
 
-            // 面积渐变
-            val area = Path().apply {
-                moveTo(scaled(points[0]).x, scaled(points[0]).y)
-                points.drop(1).forEach { lineTo(scaled(it).x, scaled(it).y) }
-                lineTo(scaled(points.last()).x, size.height)
-                lineTo(scaled(points.first()).x, size.height)
-                close()
-            }
-            drawPath(
-                path = area,
-                brush = Brush.verticalGradient(
-                    colors = listOf(Accent.copy(alpha = 0.18f), Accent.copy(alpha = 0f)),
-                    startY = 0f,
-                    endY = size.height
+            if (points.size >= 2) {
+                val area = Path().apply {
+                    moveTo(points.first().x, y0)
+                    points.forEach { lineTo(it.x, it.y) }
+                    lineTo(points.last().x, y0)
+                    close()
+                }
+                drawPath(
+                    path = area,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Accent.copy(alpha = 0.18f), Accent.copy(alpha = 0f)),
+                        startY = 0f,
+                        endY = size.height
+                    )
                 )
-            )
-
-            // 折线
-            val line = Path().apply {
-                moveTo(scaled(points[0]).x, scaled(points[0]).y)
-                points.drop(1).forEach { lineTo(scaled(it).x, scaled(it).y) }
+                val line = Path().apply {
+                    moveTo(points.first().x, points.first().y)
+                    points.drop(1).forEach { lineTo(it.x, it.y) }
+                }
+                drawPath(path = line, color = Accent, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+                val last = points.last()
+                drawCircle(color = Surface, radius = 6.dp.toPx(), center = last)
+                drawCircle(color = Accent, radius = 3.5.dp.toPx(), center = last)
             }
-            drawPath(
-                path = line,
-                color = Accent,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
-
-            // 末端圆点
-            val last = scaled(points.last())
-            drawCircle(color = Surface, radius = 6.dp.toPx(), center = last)
-            drawCircle(color = Accent, radius = 3.5.dp.toPx(), center = last)
         }
         Spacer(Modifier.height(6.dp))
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            labels.forEach { label ->
+            data.forEach { (label, _) ->
                 Text(
                     text = label,
                     fontFamily = NumFamily,
@@ -217,7 +219,7 @@ private fun TrendChart() {
 }
 
 @Composable
-private fun CategoryPanel() {
+private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
     CardSurface(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
             Row(
@@ -232,50 +234,59 @@ private fun CategoryPanel() {
                     color = Fg
                 )
                 Text(
-                    text = "5 个分类",
+                    text = "${shares.size} 个分类",
                     fontFamily = NumFamily,
                     fontSize = 11.sp,
                     color = Muted
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DonutChart()
-                Spacer(Modifier.width(16.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    MockData.categoryShares.forEach { share ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(8.dp)
-                                    .background(share.color, RoundedCornerShape(2.dp))
-                            )
-                            Spacer(Modifier.width(7.dp))
-                            Text(
-                                text = share.name,
-                                fontSize = 11.sp,
-                                color = Fg2,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = share.value,
-                                fontFamily = NumFamily,
-                                fontSize = 10.5.sp,
-                                color = Muted
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = share.percent,
-                                fontFamily = NumFamily,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Fg,
-                                modifier = Modifier.width(30.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.End
-                            )
+            if (shares.isEmpty()) {
+                Text(
+                    text = "暂无数据",
+                    fontSize = 12.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(vertical = 20.dp)
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DonutChart(shares)
+                    Spacer(Modifier.width(16.dp))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        shares.forEachIndexed { index, share ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .size(8.dp)
+                                        .background(chartColors[index % chartColors.size], RoundedCornerShape(2.dp))
+                                )
+                                Spacer(Modifier.width(7.dp))
+                                Text(
+                                    text = share.first,
+                                    fontSize = 11.sp,
+                                    color = Fg2,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "¥${"%,.0f".format(Locale.US, share.second)}",
+                                    fontFamily = NumFamily,
+                                    fontSize = 10.5.sp,
+                                    color = Muted
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "${(share.third * 100).toInt()}%",
+                                    fontFamily = NumFamily,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Fg,
+                                    modifier = Modifier.width(30.dp),
+                                    textAlign = TextAlign.End
+                                )
+                            }
                         }
                     }
                 }
@@ -285,7 +296,8 @@ private fun CategoryPanel() {
 }
 
 @Composable
-private fun DonutChart() {
+private fun DonutChart(shares: List<Triple<String, Double, Double>>) {
+    val totalCount = ShiwuRepository.activeItems().size
     Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 13.dp.toPx()
@@ -302,10 +314,10 @@ private fun DonutChart() {
                 style = Stroke(width = stroke)
             )
             var start = -90f
-            MockData.categoryShares.forEach { share ->
-                val sweep = share.fraction * 360f
+            shares.forEachIndexed { index, share ->
+                val sweep = (share.third * 360f).toFloat()
                 drawArc(
-                    color = share.color,
+                    color = chartColors[index % chartColors.size],
                     startAngle = start,
                     sweepAngle = sweep - 0.5f,
                     useCenter = false,
@@ -318,7 +330,7 @@ private fun DonutChart() {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "24",
+                text = "$totalCount",
                 fontFamily = NumFamily,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -336,7 +348,7 @@ private fun DonutChart() {
 }
 
 @Composable
-private fun TopCostPanel() {
+private fun TopCostPanel(top: List<Item>) {
     CardSurface(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp)) {
             Row(
@@ -358,67 +370,73 @@ private fun TopCostPanel() {
                 )
             }
             Spacer(Modifier.height(4.dp))
-            MockData.topCosts.forEachIndexed { index, top ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+            if (top.isEmpty()) {
+                Text(
+                    text = "暂无数据",
+                    fontSize = 12.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(vertical = 20.dp)
+                )
+            } else {
+                val maxCost = top.maxOfOrNull { it.dayCost } ?: 1.0
+                top.forEachIndexed { index, item ->
+                    Row(
                         modifier = Modifier
-                            .size(20.dp)
-                            .background(
-                                if (index == 0) Accent else Bg2,
-                                RoundedCornerShape(6.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${index + 1}",
-                            fontFamily = NumFamily,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (index == 0) OnAccent else Muted
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = top.name,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Fg,
-                            maxLines = 1
-                        )
-                        Spacer(Modifier.height(6.dp))
                         Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .background(Bg2, RoundedCornerShape(50))
+                            modifier = Modifier
+                                .size(20.dp)
+                                .background(
+                                    if (index == 0) Accent else Bg2,
+                                    RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth(top.barFraction)
-                                    .height(4.dp)
-                                    .background(Accent.copy(alpha = 0.8f), RoundedCornerShape(50))
+                            Text(
+                                text = "${index + 1}",
+                                fontFamily = NumFamily,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (index == 0) OnAccent else Muted
                             )
                         }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = item.name,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Fg,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .background(Bg2, RoundedCornerShape(50))
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth((item.dayCost / maxCost).toFloat())
+                                        .height(4.dp)
+                                        .background(Accent.copy(alpha = 0.8f), RoundedCornerShape(50))
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "¥${"%.1f".format(item.dayCost)}",
+                            fontFamily = NumFamily,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Fg
+                        )
+                        Text(text = "/天", fontSize = 9.5.sp, color = Muted)
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = top.cost,
-                        fontFamily = NumFamily,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Fg
-                    )
-                    Text(
-                        text = "/天",
-                        fontSize = 9.5.sp,
-                        color = Muted
-                    )
                 }
             }
         }
