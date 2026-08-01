@@ -1,11 +1,11 @@
 package com.zzzcy.shiwu.ui.screens
 
-import android.graphics.BitmapFactory
 import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
@@ -63,6 +65,7 @@ import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
+import com.zzzcy.shiwu.util.PhotoUtils
 import java.util.Locale
 
 @Composable
@@ -92,33 +95,38 @@ fun HomeScreen(
         matchQuery && matchRetired
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 140.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        AppHeader(
-            eyebrow = "Shiwu",
-            title = listName,
-            titleClick = onListClick,
-            actions = listOf(
-                {
-                    HeaderIconButton(Icons.Outlined.Share, "分享") {
-                        val text = buildString {
-                            append("我的物品清单 · ${active.size} 件\n\n")
-                            active.forEach { append("• ${it.name}  ¥${"%,.0f".format(Locale.US, it.price)}\n") }
+        item(span = { GridItemSpan(2) }) {
+            AppHeader(
+                eyebrow = "Shiwu",
+                title = listName,
+                titleClick = onListClick,
+                horizontalPadding = 4.dp,
+                actions = listOf(
+                    {
+                        HeaderIconButton(Icons.Outlined.Share, "分享") {
+                            val text = buildString {
+                                append("我的物品清单 · ${active.size} 件\n\n")
+                                active.forEach { append("• ${it.name}  ¥${"%,.0f".format(Locale.US, it.price)}\n") }
+                            }
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, text)
+                            }
+                            context.startActivity(Intent.createChooser(send, "分享物品清单"))
                         }
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
-                        context.startActivity(Intent.createChooser(send, "分享物品清单"))
                     }
-                }
+                )
             )
-        )
+        }
 
-        Column(Modifier.padding(horizontal = 18.dp)) {
+        item(span = { GridItemSpan(2) }) {
             OverviewCard(
                 label = "总价值 · CNY",
                 value = "%,.0f".format(Locale.US, stats.totalValue),
@@ -128,20 +136,26 @@ fun HomeScreen(
                     "本月新增" to "${stats.monthNew}件"
                 )
             )
+        }
 
+        item(span = { GridItemSpan(2) }) {
             SearchBar(query = query, onQueryChange = onQueryChange)
+        }
 
+        item(span = { GridItemSpan(2) }) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, start = 4.dp, end = 4.dp),
+                    .padding(top = 4.dp, start = 4.dp, end = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 RetiredFilter.entries.forEach { f ->
                     PillChip(f.label, active = retiredFilter == f) { onFilterChange(f) }
                 }
             }
+        }
 
+        item(span = { GridItemSpan(2) }) {
             SectionHead(
                 title = "全部物品",
                 meta = buildAnnotatedString {
@@ -152,28 +166,22 @@ fun HomeScreen(
                     append(" 件")
                 }
             )
-
-            if (filtered.isEmpty()) {
-                EmptyState(onAddClick)
-            } else {
-                filtered.chunked(2).forEach { rowItems ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowItems.forEach { item ->
-                            ItemCard(
-                                item = item,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onItemClick(item.id) }
-                            )
-                        }
-                        if (rowItems.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
         }
 
-        Spacer(Modifier.height(120.dp))
+        if (filtered.isEmpty()) {
+            item(span = { GridItemSpan(2) }) {
+                EmptyState(onAddClick)
+            }
+        } else {
+            items(filtered, key = { it.id }) { item ->
+                ItemCard(
+                    item = item,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onItemClick(item.id) }
+                )
+            }
+        }
     }
 }
 
@@ -182,7 +190,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, start = 4.dp, end = 4.dp)
+            .padding(top = 4.dp, start = 4.dp, end = 4.dp)
             .height(38.dp)
             .background(Bg2, RoundedCornerShape(50))
             .border(1.dp, Border, RoundedCornerShape(50))
@@ -262,7 +270,7 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
     CardSurface(modifier = modifier) {
         Column(Modifier.padding(8.dp)) {
             val firstPhoto = remember(item.photos.firstOrNull()) {
-                item.photos.firstOrNull()?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+                item.photos.firstOrNull()?.let { PhotoUtils.decodeSampledBitmap(it, 640, 480)?.asImageBitmap() }
             }
             Box(
                 modifier = Modifier

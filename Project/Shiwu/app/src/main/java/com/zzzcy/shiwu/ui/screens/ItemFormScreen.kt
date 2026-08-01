@@ -1,6 +1,5 @@
 package com.zzzcy.shiwu.ui.screens
 
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -542,7 +541,7 @@ private fun PhotoField(
                         .clip(RoundedCornerShape(10.dp))
                         .background(Bg2)
                 ) {
-                    val bitmap = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
+                    val bitmap = remember(path) { PhotoUtils.decodeSampledBitmap(path, 200, 200)?.asImageBitmap() }
                     if (bitmap != null) {
                         Image(
                             bitmap = bitmap,

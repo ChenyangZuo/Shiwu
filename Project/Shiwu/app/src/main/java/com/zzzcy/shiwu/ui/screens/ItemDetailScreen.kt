@@ -42,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -66,6 +65,7 @@ import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Surface
+import com.zzzcy.shiwu.util.PhotoUtils
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -333,7 +333,7 @@ private fun PhotoStrip(photos: List<String>) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFFEFEBE2))
             ) {
-                val bitmap = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
+                val bitmap = remember(path) { PhotoUtils.decodeSampledBitmap(path, 1080, 360)?.asImageBitmap() }
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap,

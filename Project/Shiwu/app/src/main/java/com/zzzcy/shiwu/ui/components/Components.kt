@@ -74,12 +74,13 @@ fun AppHeader(
     title: String,
     actions: List<@Composable () -> Unit>,
     modifier: Modifier = Modifier,
-    titleClick: (() -> Unit)? = null
+    titleClick: (() -> Unit)? = null,
+    horizontalPadding: Dp = 22.dp
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 14.dp),
+            .padding(start = horizontalPadding, end = horizontalPadding, top = 6.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
