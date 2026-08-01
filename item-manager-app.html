@@ -1,0 +1,1762 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>拾物 · 物品管理 APP — 多屏框架</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F4F1EB;
+  --bg-2:#EFEBE2;
+  --surface:#FFFFFF;
+  --fg:#1B1B19;
+  --fg-2:#3A3A35;
+  --muted:#7A766B;
+  --muted-2:#A8A39A;
+  --border:#E2DCCF;
+  --border-2:#D5CDB8;
+  --accent:#1E5F4F;
+  --accent-soft:#E8F0EC;
+  --accent-strong:#174739;
+  --warn:#B85C1E;
+  --danger:#A8362C;
+  --chip:#F0EAD8;
+  --chip-fg:#5C5232;
+  --accent-2:#2D7A6E;
+  --on-accent:#F7F3E7;
+  --warn-deep:#7A3D12;
+  --danger-deep:#5C1F18;
+  --earth-deep:#3A3220;
+  --ink-2:#2D2D29;
+  --shadow-sm:0 1px 2px rgba(20,18,12,.04),0 1px 1px rgba(20,18,12,.03);
+  --shadow-md:0 2px 6px rgba(20,18,12,.05),0 4px 14px rgba(20,18,12,.06);
+  --shadow-lg:0 8px 28px rgba(20,18,12,.10),0 2px 6px rgba(20,18,12,.05);
+  --r-sm:10px;
+  --r-md:14px;
+  --r-lg:20px;
+  --r-xl:26px;
+  --r-pill:999px;
+  --font-sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  --font-serif:"Noto Serif SC","Songti SC",Georgia,"Times New Roman",serif;
+  --font-num:"Inter","Helvetica Neue",-apple-system,monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font-sans);
+  color:var(--fg);
+  background:
+    radial-gradient(1200px 600px at 80% -10%,rgba(30,95,79,.05),transparent 60%),
+    radial-gradient(1000px 500px at -10% 100%,rgba(184,92,30,.05),transparent 60%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  letter-spacing:.005em;
+  padding:48px 32px 64px;
+  min-height:100vh;
+}
+
+.stage{
+  max-width:1600px;
+  margin:0 auto;
+}
+.stage-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:32px;
+  margin-bottom:36px;
+  padding:0 4px;
+}
+.stage-title{
+  font-family:var(--font-serif);
+  font-weight:600;
+  font-size:30px;
+  letter-spacing:-.01em;
+  line-height:1.15;
+  color:var(--fg);
+}
+.stage-title em{
+  font-style:normal;
+  color:var(--accent);
+}
+.stage-sub{
+  font-size:13px;
+  color:var(--muted);
+  margin-top:8px;
+  letter-spacing:.01em;
+}
+.stage-meta{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.tag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 12px;
+  border-radius:var(--r-pill);
+  background:var(--surface);
+  border:1px solid var(--border);
+  font-size:12px;
+  color:var(--fg-2);
+  letter-spacing:.02em;
+}
+.tag .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.tag.ghost{background:transparent}
+
+.deck{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,360px);
+  gap:56px 48px;
+  justify-content:center;
+  align-items:start;
+  padding:8px 0 32px;
+}
+
+.phone{
+  position:relative;
+  width:360px;
+  height:760px;
+  background:var(--surface);
+  border-radius:44px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.6) inset,
+    0 0 0 1px var(--border),
+    0 30px 60px -20px rgba(20,18,12,.18),
+    0 12px 30px -10px rgba(20,18,12,.12);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.slot{position:relative}
+.phone-frame-label{
+  position:absolute;
+  top:-32px;
+  left:0;
+  right:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 4px;
+}
+.phone-frame-label .name{
+  font-family:var(--font-serif);
+  font-size:15px;
+  font-weight:600;
+  color:var(--fg);
+  letter-spacing:.02em;
+}
+.phone-frame-label .num{
+  font-family:var(--font-num);
+  font-size:11px;
+  color:var(--muted);
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+/* Status bar */
+.status-bar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 26px 8px;
+  font-family:var(--font-num);
+  font-size:13px;
+  font-weight:600;
+  color:var(--fg);
+}
+.status-bar .right{display:flex;align-items:center;gap:6px}
+.status-bar .signal,.status-bar .wifi,.status-bar .batt{display:inline-block}
+.status-bar svg{color:var(--fg)}
+
+/* App header */
+.app-header{
+  padding:6px 22px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.app-title{
+  font-family:var(--font-serif);
+  font-size:24px;
+  font-weight:600;
+  letter-spacing:.02em;
+  color:var(--fg);
+  line-height:1.1;
+}
+.app-title small{
+  display:block;
+  font-family:var(--font-sans);
+  font-size:11px;
+  font-weight:500;
+  color:var(--muted);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin-bottom:2px;
+}
+.icon-btn{
+  width:36px;height:36px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border-radius:12px;
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--fg-2);
+  cursor:pointer;
+}
+.icon-btn:hover{background:var(--bg-2)}
+.icon-row{display:flex;gap:8px}
+
+/* Body scroll */
+.body{
+  flex:1;
+  overflow:hidden;
+  padding:0 18px 86px;
+  position:relative;
+}
+
+/* Overview box */
+.overview{
+  background:linear-gradient(180deg,var(--accent) 0%, var(--accent-strong) 100%);
+  color:var(--on-accent);
+  border-radius:var(--r-lg);
+  padding:16px 18px 14px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 6px 20px -8px rgba(30,95,79,.45);
+}
+.overview::after{
+  content:"";
+  position:absolute;
+  right:-40px;top:-40px;
+  width:140px;height:140px;
+  background:radial-gradient(circle,rgba(242,238,227,.10),transparent 60%);
+  border-radius:50%;
+  pointer-events:none;
+}
+.overview-label{
+  font-size:11px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:rgba(242,238,227,.65);
+  margin-bottom:6px;
+}
+.overview-value{
+  font-family:var(--font-num);
+  font-size:30px;
+  font-weight:600;
+  letter-spacing:-.01em;
+  line-height:1.05;
+  color:var(--on-accent);
+}
+.overview-value .yuan{
+  font-family:var(--font-serif);
+  font-size:18px;
+  font-weight:500;
+  margin-right:3px;
+  opacity:.85;
+}
+.overview-stats{
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid rgba(242,238,227,.18);
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+}
+.ov-stat{line-height:1.15}
+.ov-stat .k{
+  font-size:10.5px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(242,238,227,.6);
+  margin-bottom:4px;
+}
+.ov-stat .v{
+  font-family:var(--font-num);
+  font-size:14px;
+  font-weight:600;
+  color:var(--on-accent);
+  letter-spacing:-.005em;
+}
+.ov-stat .v .u{font-size:10px;font-weight:500;opacity:.7;margin-left:2px}
+
+/* Section header */
+.section-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin:14px 4px 8px;
+}
+.section-head h3{
+  font-family:var(--font-serif);
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:.02em;
+  color:var(--fg);
+}
+.section-head .meta{
+  font-size:11px;
+  color:var(--muted);
+  letter-spacing:.04em;
+}
+.section-head .meta b{font-family:var(--font-num);color:var(--fg-2);font-weight:600}
+
+/* Item grid */
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.item-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  position:relative;
+  transition:transform .12s ease;
+}
+.item-card .thumb{
+  aspect-ratio:1.35/1;
+  border-radius:9px;
+  position:relative;
+  overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.item-card .thumb .glyph{
+  width:40px;height:40px;
+  color:var(--on-accent);
+  opacity:.95;
+}
+.item-card .thumb .corner{
+  position:absolute;left:8px;top:8px;
+  font-size:9.5px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  padding:3px 7px;
+  border-radius:var(--r-pill);
+  background:rgba(255,255,255,.85);
+  color:var(--fg);
+  font-family:var(--font-num);
+  font-weight:600;
+  backdrop-filter:blur(6px);
+}
+.item-card .thumb .days{
+  position:absolute;right:8px;bottom:8px;
+  font-size:10px;
+  padding:3px 7px;
+  border-radius:var(--r-pill);
+  background:rgba(20,18,12,.55);
+  color:var(--on-accent);
+  font-family:var(--font-num);
+  font-weight:500;
+  letter-spacing:.02em;
+  backdrop-filter:blur(6px);
+}
+.item-card .name{
+  font-size:12px;
+  font-weight:500;
+  line-height:1.3;
+  color:var(--fg);
+  letter-spacing:.01em;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  min-height:15px;
+}
+.item-card .price-row{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin-top:auto;
+}
+.item-card .price{
+  font-family:var(--font-num);
+  font-size:14px;
+  font-weight:600;
+  color:var(--fg);
+  letter-spacing:-.005em;
+}
+.item-card .price .y{font-family:var(--font-serif);font-weight:500;font-size:11px;margin-right:1px;color:var(--muted)}
+.item-card .daycost{
+  font-family:var(--font-num);
+  font-size:10.5px;
+  color:var(--muted);
+  letter-spacing:.02em;
+}
+.item-card .daycost b{color:var(--accent);font-weight:600}
+
+/* List variant */
+.list{
+  display:flex;flex-direction:column;gap:8px;
+}
+.row-card{
+  display:flex;
+  gap:12px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  padding:10px;
+  align-items:center;
+}
+.row-card .thumb{
+  width:64px;height:64px;
+  border-radius:10px;
+  flex-shrink:0;
+  position:relative;
+  overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.row-card .thumb .glyph{width:30px;height:30px;color:var(--on-accent)}
+.row-card .thumb .days{
+  position:absolute;right:4px;bottom:4px;
+  font-size:9px;
+  padding:2px 5px;
+  border-radius:var(--r-pill);
+  background:rgba(20,18,12,.55);
+  color:var(--on-accent);
+  font-family:var(--font-num);
+  font-weight:500;
+  letter-spacing:.02em;
+  backdrop-filter:blur(6px);
+}
+.row-card .info{flex:1;min-width:0}
+.row-card .name{
+  font-size:13px;
+  font-weight:500;
+  line-height:1.3;
+  color:var(--fg);
+  letter-spacing:.01em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.row-card .sub{
+  font-size:10.5px;
+  color:var(--muted);
+  margin-top:2px;
+  letter-spacing:.02em;
+}
+.row-card .sub b{color:var(--fg-2);font-weight:600;font-family:var(--font-num)}
+.row-card .right-col{text-align:right;flex-shrink:0}
+.row-card .price{
+  font-family:var(--font-num);
+  font-size:14px;
+  font-weight:600;
+  color:var(--fg);
+}
+.row-card .price .y{font-family:var(--font-serif);font-weight:500;font-size:10.5px;margin-right:1px;color:var(--muted)}
+.row-card .daycost{
+  font-family:var(--font-num);
+  font-size:10px;
+  color:var(--muted);
+  margin-top:2px;
+}
+.row-card .daycost b{color:var(--accent);font-weight:600}
+
+/* Wishlist (priority) */
+.wish-row{
+  display:flex;
+  gap:12px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  padding:9px 10px;
+  align-items:center;
+  position:relative;
+}
+.wish-row .prio{
+  position:absolute;
+  top:8px;right:8px;
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:9.5px;
+  font-family:var(--font-num);
+  font-weight:600;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--warn);
+  background:rgba(184,92,30,.08);
+  padding:3px 6px;
+  border-radius:var(--r-pill);
+}
+.wish-row .prio svg{width:9px;height:9px}
+.wish-row .thumb{
+  width:54px;height:54px;
+  border-radius:9px;
+  flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.wish-row .thumb .glyph{width:26px;height:26px;color:var(--on-accent)}
+.wish-row .info{flex:1;min-width:0;padding-right:42px}
+.wish-row .name{
+  font-size:13px;
+  font-weight:500;
+  line-height:1.3;
+  color:var(--fg);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.wish-row .meta{
+  display:flex;align-items:center;gap:8px;
+  margin-top:4px;
+  font-size:10.5px;
+  color:var(--muted);
+  letter-spacing:.02em;
+}
+.wish-row .meta .chip{
+  display:inline-flex;align-items:center;gap:3px;
+  font-size:9.5px;
+  padding:2px 6px;
+  border-radius:var(--r-pill);
+  background:var(--chip);
+  color:var(--chip-fg);
+  font-family:var(--font-num);
+  font-weight:500;
+  letter-spacing:.04em;
+}
+.wish-row .price{
+  font-family:var(--font-num);
+  font-size:14px;
+  font-weight:600;
+  color:var(--accent);
+  flex-shrink:0;
+}
+.wish-row .price .y{font-family:var(--font-serif);font-weight:500;font-size:10.5px;margin-right:1px;color:var(--muted)}
+
+/* Profile */
+.profile-hero{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:4px 4px 14px;
+}
+.avatar{
+  width:56px;height:56px;
+  border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  color:var(--on-accent);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-serif);
+  font-size:22px;
+  font-weight:600;
+  flex-shrink:0;
+  box-shadow:0 4px 12px -4px rgba(30,95,79,.4);
+}
+.profile-name{
+  font-family:var(--font-serif);
+  font-size:18px;
+  font-weight:600;
+  color:var(--fg);
+  letter-spacing:.01em;
+  line-height:1.1;
+}
+.profile-sub{
+  font-size:11.5px;
+  color:var(--muted);
+  margin-top:4px;
+  letter-spacing:.02em;
+}
+.profile-stats{
+  margin-left:auto;
+  display:flex;
+  gap:14px;
+}
+.profile-stat{text-align:center}
+.profile-stat .v{
+  font-family:var(--font-num);
+  font-size:15px;
+  font-weight:600;
+  color:var(--fg);
+  line-height:1;
+}
+.profile-stat .k{
+  font-size:9.5px;
+  color:var(--muted);
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-top:4px;
+}
+
+.menu{
+  display:flex;flex-direction:column;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  overflow:hidden;
+  margin-top:6px;
+}
+.menu-row{
+  display:flex;align-items:center;gap:12px;
+  padding:11px 14px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  position:relative;
+}
+.menu-row:last-child{border-bottom:0}
+.menu-row .ico{
+  width:32px;height:32px;
+  border-radius:9px;
+  background:var(--bg-2);
+  color:var(--fg-2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.menu-row .ico svg{width:16px;height:16px}
+.menu-row .ico.accent{background:var(--accent-soft);color:var(--accent)}
+.menu-row .ico.warn{background:rgba(184,92,30,.10);color:var(--warn)}
+.menu-row .ico.danger{background:rgba(168,54,44,.10);color:var(--danger)}
+.menu-row .lbl{
+  font-size:13px;
+  font-weight:500;
+  color:var(--fg);
+  letter-spacing:.01em;
+  flex:1;
+}
+.menu-row .lbl small{
+  display:block;
+  font-size:10.5px;
+  color:var(--muted);
+  font-weight:400;
+  margin-top:1px;
+  letter-spacing:.02em;
+}
+.menu-row .chev{color:var(--muted-2);flex-shrink:0}
+.menu-row .badge{
+  font-family:var(--font-num);
+  font-size:10px;
+  font-weight:600;
+  color:var(--accent);
+  background:var(--accent-soft);
+  padding:2px 7px;
+  border-radius:var(--r-pill);
+  letter-spacing:.04em;
+}
+
+.storage-card{
+  margin-top:12px;
+  padding:13px 14px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+}
+.storage-head{
+  display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;
+}
+.storage-head .lbl{font-size:12.5px;font-weight:500;color:var(--fg)}
+.storage-head .val{font-family:var(--font-num);font-size:11px;color:var(--muted);letter-spacing:.04em}
+.storage-bar{
+  height:6px;
+  background:var(--bg-2);
+  border-radius:var(--r-pill);
+  overflow:hidden;
+  position:relative;
+}
+.storage-bar .fill{
+  position:absolute;left:0;top:0;bottom:0;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  border-radius:var(--r-pill);
+}
+.storage-foot{
+  display:flex;justify-content:space-between;
+  margin-top:8px;
+  font-size:10.5px;
+  color:var(--muted);
+  letter-spacing:.02em;
+}
+.storage-foot .sync{
+  display:inline-flex;align-items:center;gap:4px;
+  color:var(--accent);
+}
+.storage-foot .sync svg{width:11px;height:11px}
+
+/* Stats screen */
+.panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  padding:13px 14px;
+  margin-top:10px;
+}
+.panel-head{
+  display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;
+}
+.panel-head .t{font-size:12.5px;font-weight:500;color:var(--fg);letter-spacing:.01em}
+.panel-head .v{font-family:var(--font-num);font-size:11px;color:var(--muted);letter-spacing:.03em;display:inline-flex;align-items:center;gap:6px}
+.delta{
+  display:inline-flex;align-items:center;
+  font-family:var(--font-num);font-size:10px;font-weight:600;
+  color:var(--accent);background:var(--accent-soft);
+  padding:2px 7px;border-radius:var(--r-pill);letter-spacing:.03em;
+}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:var(--border);stroke-width:1;opacity:.45}
+.chart .grid.base{opacity:.8}
+.chart .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.chart .dot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.chart-x{
+  display:flex;justify-content:space-between;
+  margin-top:6px;padding:0 2px;
+  font-family:var(--font-num);font-size:9.5px;color:var(--muted);letter-spacing:.05em;
+}
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut{position:relative;width:104px;height:104px;flex-shrink:0}
+.donut svg{width:104px;height:104px;transform:rotate(-90deg)}
+.donut .track{fill:none;stroke:var(--bg-2);stroke-width:13}
+.donut .seg{fill:none;stroke-width:13}
+.donut .seg.c1{stroke:var(--accent)}
+.donut .seg.c2{stroke:var(--warn)}
+.donut .seg.c3{stroke:var(--accent-2)}
+.donut .seg.c4{stroke:var(--chip-fg)}
+.donut .seg.c5{stroke:var(--border-2)}
+.donut .hole{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.donut .hole .n{font-family:var(--font-num);font-size:17px;font-weight:600;color:var(--fg);line-height:1}
+.donut .hole .k{font-size:9px;color:var(--muted);letter-spacing:.1em;margin-top:3px}
+.legend{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
+.legend .li{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fg-2)}
+.legend .li .d{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.legend .li .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+.legend .li .val{font-family:var(--font-num);font-size:10.5px;color:var(--muted)}
+.legend .li .pct{font-family:var(--font-num);font-size:10.5px;font-weight:600;color:var(--fg);width:30px;text-align:right}
+.top-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 0;border-bottom:1px solid var(--border);
+}
+.top-row:last-child{border-bottom:0;padding-bottom:2px}
+.top-row .rank{
+  width:20px;height:20px;border-radius:6px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-num);font-size:10.5px;font-weight:600;
+  background:var(--bg-2);color:var(--muted);
+}
+.top-row .rank.first{background:var(--accent);color:var(--on-accent)}
+.top-info{flex:1;min-width:0}
+.top-info .nm{font-size:12px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.top-info .bar{height:4px;background:var(--bg-2);border-radius:var(--r-pill);margin-top:6px;overflow:hidden}
+.top-info .bar i{display:block;height:100%;background:var(--accent);opacity:.8;border-radius:var(--r-pill)}
+.top-cost{font-family:var(--font-num);font-size:12.5px;font-weight:600;color:var(--fg);flex-shrink:0}
+.top-cost small{font-size:9.5px;color:var(--muted);font-weight:400;margin-left:1px}
+
+/* Item form sheet (add / edit shared) */
+.grabber{width:36px;height:4px;border-radius:var(--r-pill);background:var(--border-2);margin:2px auto 4px}
+.sheet-nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 18px 12px;
+}
+.sheet-nav .ttl{
+  font-family:var(--font-serif);font-size:16px;font-weight:600;color:var(--fg);letter-spacing:.02em;
+}
+.sheet-nav .spacer{width:36px;height:36px;visibility:hidden}
+.body.form-body{padding-bottom:140px}
+.form{display:flex;flex-direction:column;gap:14px}
+.f-label{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:6px;display:flex;justify-content:space-between;align-items:baseline}
+.f-label .req{color:var(--danger)}
+.input{
+  height:42px;display:flex;align-items:center;gap:8px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:0 12px;font-size:13px;color:var(--fg);letter-spacing:.01em;
+}
+.input .ph{color:var(--muted-2)}
+.input.focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(30,95,79,.12)}
+.input .unit{font-family:var(--font-serif);color:var(--muted);font-size:14px}
+.input .tail{margin-left:auto;color:var(--muted-2);display:inline-flex;align-items:center}
+.input .tail svg{width:14px;height:14px}
+.photo-row{display:flex;gap:8px}
+.photo-slot{
+  width:72px;height:72px;border-radius:var(--r-sm);
+  border:1.5px dashed var(--border-2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  color:var(--muted);font-size:9.5px;letter-spacing:.06em;cursor:pointer;
+}
+.photo-slot svg{width:18px;height:18px}
+.photo-slot.ghost{border-style:solid;border-color:var(--border);background:var(--bg-2);opacity:.55;cursor:default}
+.cat-row{display:flex;flex-wrap:wrap;gap:6px}
+.f-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.calc-hint{
+  display:flex;align-items:center;gap:7px;
+  background:var(--accent-soft);border-radius:var(--r-sm);
+  padding:8px 11px;font-size:10.5px;color:var(--accent);letter-spacing:.02em;
+}
+.calc-hint svg{width:12px;height:12px;flex-shrink:0}
+.calc-hint b{font-family:var(--font-num);font-weight:600}
+.annot{
+  border:1.5px dashed var(--border-2);border-radius:var(--r-md);
+  padding:11px 13px;
+  background:color-mix(in srgb,var(--bg-2) 45%,var(--surface));
+}
+.annot .a-t{
+  font-size:10.5px;font-weight:600;color:var(--fg-2);
+  letter-spacing:.08em;margin-bottom:7px;display:flex;align-items:center;gap:6px;
+}
+.annot .a-t svg{width:12px;height:12px;color:var(--muted)}
+.annot .a-r{display:flex;gap:8px;font-size:10.5px;color:var(--muted);line-height:1.55;letter-spacing:.02em;padding:2.5px 0}
+.annot .a-r .k{color:var(--fg-2);font-weight:500;flex-shrink:0;width:56px}
+.annot .a-r b{color:var(--fg);font-weight:500}
+.sheet-cta{
+  position:absolute;left:0;right:0;bottom:0;z-index:5;
+  padding:10px 18px 18px;
+  background:linear-gradient(180deg,rgba(255,255,255,0),var(--surface) 32%);
+  display:flex;flex-direction:column;gap:8px;
+}
+.btn{
+  height:46px;border-radius:var(--r-md);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:14px;font-weight:600;letter-spacing:.04em;cursor:pointer;
+}
+.btn-primary{
+  background:var(--accent);color:var(--on-accent);
+  box-shadow:0 6px 16px -6px rgba(30,95,79,.5),0 1px 0 rgba(255,255,255,.16) inset;
+}
+.btn-danger-ghost{
+  background:transparent;color:var(--danger);
+  border:1.5px dashed var(--danger);
+  font-weight:500;font-size:12px;height:38px;
+}
+.btn-danger-ghost .tag-mini{
+  font-size:9px;font-weight:600;letter-spacing:.06em;
+  border:1px solid currentColor;border-radius:var(--r-pill);padding:1px 6px;opacity:.8;
+}
+
+/* Dock */
+.dock{
+  position:absolute;
+  left:14px;right:14px;bottom:12px;
+  height:62px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border:1px solid var(--border);
+  border-radius:var(--r-xl);
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  align-items:center;
+  padding:0 6px;
+  box-shadow:0 8px 24px -10px rgba(20,18,12,.18);
+  z-index:5;
+}
+.dock-item{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 0;
+  position:relative;
+  cursor:pointer;
+}
+.dock-item svg{width:20px;height:20px;color:var(--muted);transition:color .15s}
+.dock-item .lb{font-size:9.5px;color:var(--muted);letter-spacing:.04em;transition:color .15s}
+.dock-item.active svg{color:var(--accent)}
+.dock-item.active .lb{color:var(--accent);font-weight:600}
+.dock-item.active::before{
+  content:"";
+  position:absolute;
+  top:-2px;
+  width:16px;height:2.5px;
+  background:var(--accent);
+  border-radius:2px;
+}
+
+/* FAB */
+.fab{
+  position:absolute;
+  right:24px;bottom:90px;
+  width:52px;height:52px;
+  border-radius:50%;
+  background:var(--accent);
+  color:var(--on-accent);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.18) inset,
+    0 8px 20px -6px rgba(30,95,79,.55),
+    0 2px 6px rgba(20,18,12,.18);
+  z-index:6;
+  cursor:pointer;
+}
+.fab svg{width:22px;height:22px}
+
+/* Search bar (variant for home) */
+.search{
+  margin:12px 4px;
+  height:38px;
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-pill);
+  padding:0 12px;
+  color:var(--muted);
+  font-size:12.5px;
+  letter-spacing:.02em;
+}
+.search svg{width:14px;height:14px;flex-shrink:0}
+.search .kbd{
+  margin-left:auto;
+  font-family:var(--font-num);
+  font-size:10px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  padding:2px 6px;
+  border-radius:5px;
+  color:var(--muted-2);
+  letter-spacing:.04em;
+}
+
+/* Filter chips */
+.filters{
+  display:flex;gap:6px;
+  margin:0 4px 12px;
+  overflow:hidden;
+}
+.chip{
+  font-size:11px;
+  padding:5px 11px;
+  border-radius:var(--r-pill);
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--muted);
+  letter-spacing:.02em;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.chip.active{
+  background:var(--fg);
+  color:var(--bg);
+  border-color:var(--fg);
+  font-weight:500;
+}
+
+/* Tiny note */
+.note-line{
+  text-align:center;
+  font-size:11.5px;
+  color:var(--muted);
+  margin-top:32px;
+  letter-spacing:.04em;
+}
+.note-line em{font-style:normal;color:var(--accent);font-weight:500}
+
+/* Footer */
+.foot{
+  max-width:1600px;
+  margin:36px auto 0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:18px 4px 0;
+  border-top:1px solid var(--border);
+  font-size:11.5px;
+  color:var(--muted);
+  letter-spacing:.02em;
+}
+.foot .legend{display:flex;gap:16px}
+.foot .legend span{display:inline-flex;align-items:center;gap:6px}
+.foot .swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* Responsive: stack phones, never squeeze */
+@media (max-width:900px){
+  body{padding:32px 20px 48px}
+  .stage-head{flex-direction:column;align-items:flex-start;gap:16px;margin-bottom:40px}
+  .foot{flex-direction:column;align-items:flex-start;gap:12px}
+}
+@media (max-width:420px){
+  body{padding:24px 12px 40px}
+  .deck{grid-template-columns:minmax(0,360px)}
+  .phone{width:100%}
+  .stage-title{font-size:24px}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <header class="stage-head">
+    <div>
+      <h1 class="stage-title">拾物 <em>·</em> 个人物品管理</h1>
+      <div class="stage-sub">五屏并排框架展示 · iOS / Android 通用比例</div>
+    </div>
+    <div class="stage-meta">
+      <span class="tag"><span class="dot"></span>v0.1 框架稿</span>
+      <span class="tag ghost">5 / 5 屏</span>
+    </div>
+  </header>
+
+  <div class="deck">
+
+    <!-- ============ SCREEN 1: HOME ============ -->
+    <div class="slot">
+      <div class="phone-frame-label">
+        <span class="name">首页 · 物品总览</span>
+        <span class="num">01</span>
+      </div>
+    <section class="phone" data-od-id="screen-home">
+
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="right">
+          <svg class="signal" width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.5" height="4" rx="1"/><rect x="4" y="5" width="2.5" height="6" rx="1"/><rect x="8" y="2.5" width="2.5" height="8.5" rx="1"/><rect x="12" y="0" width="2.5" height="11" rx="1"/></svg>
+          <svg class="wifi" width="14" height="10" viewBox="0 0 14 10" fill="currentColor"><path d="M7 8.5a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4zM3.6 6.3a4.8 4.8 0 016.8 0l-1.1 1.1a3.2 3.2 0 00-4.6 0L3.6 6.3zM1 3.7a8.8 8.8 0 0112 0l-1.1 1.1a7.2 7.2 0 00-9.8 0L1 3.7z"/></svg>
+          <svg class="batt" width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.6" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <header class="app-header">
+        <div>
+          <small>Shiwu</small>
+          <div class="app-title">我的物品</div>
+        </div>
+        <div class="icon-row">
+          <button class="icon-btn" aria-label="搜索">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="分享">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+
+        <!-- Overview -->
+        <div class="overview" data-od-id="overview-home">
+          <div class="overview-label">总价值 · CNY</div>
+          <div class="overview-value"><span class="yuan">¥</span>48,562</div>
+          <div class="overview-stats">
+            <div class="ov-stat">
+              <div class="k">物品总数</div>
+              <div class="v">24<span class="u">件</span></div>
+            </div>
+            <div class="ov-stat">
+              <div class="k">日均总成本</div>
+              <div class="v">¥32.4</div>
+            </div>
+            <div class="ov-stat">
+              <div class="k">本月新增</div>
+              <div class="v">3<span class="u">件</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search + filters -->
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span>搜索物品、品牌或标签</span>
+          <span class="kbd">⌘ K</span>
+        </div>
+
+        <div class="section-head">
+          <h3>全部物品</h3>
+          <span class="meta">共 <b>24</b> 件</span>
+        </div>
+
+        <!-- Item grid (4 visible) -->
+        <div class="grid">
+          <!-- 1. Headphones -->
+          <div class="item-card" data-od-id="item-card-headphones">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--fg-2),var(--fg))">
+              <span class="corner">数码</span>
+              <span class="days">124天</span>
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+            </div>
+            <div class="name">Sony WH-1000XM5 无线降噪耳机</div>
+            <div class="price-row">
+              <div class="price"><span class="y">¥</span>2,899</div>
+              <div class="daycost"><b>¥23.4</b>/天</div>
+            </div>
+          </div>
+
+          <!-- 2. Kindle -->
+          <div class="item-card" data-od-id="item-card-kindle">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--chip-fg),var(--earth-deep))">
+              <span class="corner">阅读</span>
+              <span class="days">287天</span>
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </div>
+            <div class="name">Kindle Paperwhite 11代</div>
+            <div class="price-row">
+              <div class="price"><span class="y">¥</span>1,098</div>
+              <div class="daycost"><b>¥3.8</b>/天</div>
+            </div>
+          </div>
+
+          <!-- 3. iPad -->
+          <div class="item-card" data-od-id="item-card-ipad">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--muted),var(--fg-2))">
+              <span class="corner">数码</span>
+              <span class="days">56天</span>
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+            </div>
+            <div class="name">iPad Air M2 11 寸 256G</div>
+            <div class="price-row">
+              <div class="price"><span class="y">¥</span>4,799</div>
+              <div class="daycost"><b>¥85.7</b>/天</div>
+            </div>
+          </div>
+
+          <!-- 4. Down jacket -->
+          <div class="item-card" data-od-id="item-card-jacket">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--accent-2),var(--accent))">
+              <span class="corner">服饰</span>
+              <span class="days">412天</span>
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l-3 4 3 4 2-1v11h12V10l2 1 3-4-3-4-4 1-3 3-2-1-2 1-3-3z"/></svg>
+            </div>
+            <div class="name">The North Face 冲锋衣</div>
+            <div class="price-row">
+              <div class="price"><span class="y">¥</span>1,890</div>
+              <div class="daycost"><b>¥4.6</b>/天</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FAB -->
+      <button class="fab" data-od-id="fab-add-home" aria-label="新增物品">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+
+      <!-- Dock -->
+      <nav class="dock" data-od-id="dock-home">
+        <div class="dock-item active" data-od-id="dock-tab-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span class="lb">首页</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-wishlist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          <span class="lb">愿望</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-stats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
+          <span class="lb">统计</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-me">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span class="lb">我的</span>
+        </div>
+      </nav>
+    </section>
+    </div>
+
+
+    <!-- ============ SCREEN 2: WISHLIST ============ -->
+    <div class="slot">
+      <div class="phone-frame-label">
+        <span class="name">愿望单 · 心愿列表</span>
+        <span class="num">02</span>
+      </div>
+    <section class="phone" data-od-id="screen-wishlist">
+
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="right">
+          <svg class="signal" width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.5" height="4" rx="1"/><rect x="4" y="5" width="2.5" height="6" rx="1"/><rect x="8" y="2.5" width="2.5" height="8.5" rx="1"/><rect x="12" y="0" width="2.5" height="11" rx="1"/></svg>
+          <svg class="wifi" width="14" height="10" viewBox="0 0 14 10" fill="currentColor"><path d="M7 8.5a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4zM3.6 6.3a4.8 4.8 0 016.8 0l-1.1 1.1a3.2 3.2 0 00-4.6 0L3.6 6.3zM1 3.7a8.8 8.8 0 0112 0l-1.1 1.1a7.2 7.2 0 00-9.8 0L1 3.7z"/></svg>
+          <svg class="batt" width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.6" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <header class="app-header">
+        <div>
+          <small>Wishlist</small>
+          <div class="app-title">愿望清单</div>
+        </div>
+        <div class="icon-row">
+          <button class="icon-btn" aria-label="筛选">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+          </button>
+          <button class="icon-btn" aria-label="排序">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h13"/><path d="M3 12h9"/><path d="M3 18h5"/><path d="M17 14v6"/><path d="M14 17l3 3 3-3"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+
+        <!-- Overview (lighter) -->
+        <div class="overview" data-od-id="overview-wishlist" style="background:linear-gradient(180deg,var(--fg) 0%, var(--ink-2) 100%);box-shadow:0 6px 20px -8px rgba(20,18,12,.4)">
+          <div class="overview-label">预计总费用 · 待购</div>
+          <div class="overview-value"><span class="yuan">¥</span>73,296</div>
+          <div class="overview-stats">
+            <div class="ov-stat">
+              <div class="k">心愿数</div>
+              <div class="v">5<span class="u">件</span></div>
+            </div>
+            <div class="ov-stat">
+              <div class="k">已攒预算</div>
+              <div class="v">¥12,500</div>
+            </div>
+            <div class="ov-stat">
+              <div class="k">完成度</div>
+              <div class="v">17%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>心愿列表</h3>
+          <span class="meta">按 <b>优先级</b> 排序</span>
+        </div>
+
+        <!-- Wishlist rows -->
+        <div class="list">
+          <!-- 1. MacBook -->
+          <div class="wish-row" data-od-id="wish-macbook">
+            <span class="prio">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.6 6.2 6.7.5-5.1 4.4 1.6 6.5L12 16.8 6.2 19.6 7.8 13 2.7 8.7l6.7-.5z"/></svg>
+              HIGH
+            </span>
+            <div class="thumb" style="background:linear-gradient(135deg,var(--fg-2),var(--fg))">
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M2 20h20"/><path d="M9 16v4M15 16v4"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">MacBook Pro 14" M4 Pro</div>
+              <div class="meta">
+                <span class="chip">数码</span>
+                <span>预计 11月</span>
+              </div>
+            </div>
+            <div class="price"><span class="y">¥</span>14,999</div>
+          </div>
+
+          <!-- 2. DJI -->
+          <div class="wish-row" data-od-id="wish-dji">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--accent),var(--accent-strong))">
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M5 5l3 3M19 5l-3 3M5 19l3-3M19 19l-3-3"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">DJI Pocket 3 全能套装</div>
+              <div class="meta">
+                <span class="chip">影像</span>
+                <span>已攒 ¥3,200</span>
+              </div>
+            </div>
+            <div class="price"><span class="y">¥</span>4,499</div>
+          </div>
+
+          <!-- 3. OnePlus -->
+          <div class="wish-row" data-od-id="wish-oneplus">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--warn),var(--warn-deep))">
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">一加 13 16+512G</div>
+              <div class="meta">
+                <span class="chip">数码</span>
+                <span>等待发布</span>
+              </div>
+            </div>
+            <div class="price"><span class="y">¥</span>4,499</div>
+          </div>
+
+          <!-- 4. Maotai -->
+          <div class="wish-row" data-od-id="wish-maotai">
+            <div class="thumb" style="background:linear-gradient(135deg,var(--chip-fg),var(--earth-deep))">
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3l1 3v9a3 3 0 0 1-3 3h-2a3 3 0 0 1-3-3V9l1-3z"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">飞天茅台 53° 500ml</div>
+              <div class="meta">
+                <span class="chip">收藏</span>
+                <span>节日备礼</span>
+              </div>
+            </div>
+            <div class="price"><span class="y">¥</span>2,499</div>
+          </div>
+
+          <!-- 5. Leica -->
+          <div class="wish-row" data-od-id="wish-leica">
+            <span class="prio">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.6 6.2 6.7.5-5.1 4.4 1.6 6.5L12 16.8 6.2 19.6 7.8 13 2.7 8.7l6.7-.5z"/></svg>
+              DREAM
+            </span>
+            <div class="thumb" style="background:linear-gradient(135deg,var(--danger),var(--danger-deep))">
+              <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3"/><circle cx="12" cy="13" r="3.5"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">徕卡 Q3 43 紧凑全幅</div>
+              <div class="meta">
+                <span class="chip">影像</span>
+                <span>长期目标</span>
+              </div>
+            </div>
+            <div class="price"><span class="y">¥</span>46,800</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FAB -->
+      <button class="fab" data-od-id="fab-add-wish" aria-label="新增心愿">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+
+      <!-- Dock -->
+      <nav class="dock" data-od-id="dock-wishlist">
+        <div class="dock-item" data-od-id="dock-tab-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span class="lb">首页</span>
+        </div>
+        <div class="dock-item active" data-od-id="dock-tab-wishlist">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          <span class="lb">愿望</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-stats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
+          <span class="lb">统计</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-me">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span class="lb">我的</span>
+        </div>
+      </nav>
+    </section>
+    </div>
+
+
+    <!-- ============ SCREEN 3: STATS ============ -->
+    <div class="slot">
+      <div class="phone-frame-label">
+        <span class="name">统计 · 价值分析</span>
+        <span class="num">03</span>
+      </div>
+    <section class="phone" data-od-id="screen-stats">
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="right">
+          <svg class="signal" width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.5" height="4" rx="1"/><rect x="4" y="5" width="2.5" height="6" rx="1"/><rect x="8" y="2.5" width="2.5" height="8.5" rx="1"/><rect x="12" y="0" width="2.5" height="11" rx="1"/></svg>
+          <svg class="wifi" width="14" height="10" viewBox="0 0 14 10" fill="currentColor"><path d="M7 8.5a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4zM3.6 6.3a4.8 4.8 0 016.8 0l-1.1 1.1a3.2 3.2 0 00-4.6 0L3.6 6.3zM1 3.7a8.8 8.8 0 0112 0l-1.1 1.1a7.2 7.2 0 00-9.8 0L1 3.7z"/></svg>
+          <svg class="batt" width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.6" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <header class="app-header">
+        <div>
+          <small>Stats</small>
+          <div class="app-title">统计</div>
+        </div>
+        <div class="icon-row">
+          <button class="icon-btn" aria-label="导出报表">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+
+        <!-- Range switch -->
+        <div class="filters" data-od-id="stats-range">
+          <span class="chip">本月</span>
+          <span class="chip active">近半年</span>
+          <span class="chip">全年</span>
+        </div>
+
+        <!-- Value trend -->
+        <div class="panel" data-od-id="stats-trend">
+          <div class="panel-head">
+            <span class="t">总价值趋势</span>
+            <span class="v">¥48,562 <span class="delta">+27.2%</span></span>
+          </div>
+          <svg class="chart" viewBox="0 0 312 108" aria-label="近六个月总价值趋势图">
+            <defs>
+              <linearGradient id="gradValue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color:var(--accent);stop-opacity:.18"/>
+                <stop offset="1" style="stop-color:var(--accent);stop-opacity:0"/>
+              </linearGradient>
+            </defs>
+            <line class="grid" x1="8" y1="36" x2="304" y2="36"/>
+            <line class="grid" x1="8" y1="68" x2="304" y2="68"/>
+            <line class="grid base" x1="8" y1="100" x2="304" y2="100"/>
+            <path d="M8,82.8 L67.2,71.4 L126.4,61.2 L185.6,45 L244.8,36 L304,20.4 L304,100 L8,100 Z" fill="url(#gradValue)"/>
+            <path class="line" d="M8,82.8 L67.2,71.4 L126.4,61.2 L185.6,45 L244.8,36 L304,20.4"/>
+            <circle class="dot" cx="304" cy="20.4" r="3.2"/>
+          </svg>
+          <div class="chart-x">
+            <span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span>
+          </div>
+        </div>
+
+        <!-- Category share -->
+        <div class="panel" data-od-id="stats-category">
+          <div class="panel-head">
+            <span class="t">分类占比</span>
+            <span class="v">5 个分类</span>
+          </div>
+          <div class="donut-wrap">
+            <div class="donut">
+              <svg viewBox="0 0 104 104">
+                <circle class="track" cx="52" cy="52" r="42"/>
+                <circle class="seg c1" cx="52" cy="52" r="42" stroke-dasharray="116.1 147.8" stroke-dashoffset="0"/>
+                <circle class="seg c2" cx="52" cy="52" r="42" stroke-dasharray="52.8 211.1" stroke-dashoffset="-116.1"/>
+                <circle class="seg c3" cx="52" cy="52" r="42" stroke-dasharray="39.6 224.3" stroke-dashoffset="-168.9"/>
+                <circle class="seg c4" cx="52" cy="52" r="42" stroke-dasharray="34.3 229.6" stroke-dashoffset="-208.5"/>
+                <circle class="seg c5" cx="52" cy="52" r="42" stroke-dasharray="21.1 242.8" stroke-dashoffset="-242.8"/>
+              </svg>
+              <div class="hole">
+                <span class="n">24</span>
+                <span class="k">件物品</span>
+              </div>
+            </div>
+            <div class="legend">
+              <div class="li"><i class="d" style="background:var(--accent)"></i><span class="nm">数码</span><span class="val">¥21,400</span><span class="pct">44%</span></div>
+              <div class="li"><i class="d" style="background:var(--warn)"></i><span class="nm">服饰</span><span class="val">¥9,800</span><span class="pct">20%</span></div>
+              <div class="li"><i class="d" style="background:var(--accent-2)"></i><span class="nm">家居</span><span class="val">¥7,162</span><span class="pct">15%</span></div>
+              <div class="li"><i class="d" style="background:var(--chip-fg)"></i><span class="nm">阅读</span><span class="val">¥6,200</span><span class="pct">13%</span></div>
+              <div class="li"><i class="d" style="background:var(--border-2)"></i><span class="nm">其他</span><span class="val">¥4,000</span><span class="pct">8%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Day-cost ranking -->
+        <div class="panel" data-od-id="stats-top">
+          <div class="panel-head">
+            <span class="t">日均成本 TOP 3</span>
+            <span class="v">按当前持有</span>
+          </div>
+          <div class="top-row" data-od-id="top-ipad">
+            <span class="rank first">1</span>
+            <div class="top-info">
+              <div class="nm">iPad Air M2 11 寸</div>
+              <div class="bar"><i style="width:100%"></i></div>
+            </div>
+            <span class="top-cost">¥85.7<small>/天</small></span>
+          </div>
+          <div class="top-row" data-od-id="top-sony">
+            <span class="rank">2</span>
+            <div class="top-info">
+              <div class="nm">Sony WH-1000XM5</div>
+              <div class="bar"><i style="width:27%"></i></div>
+            </div>
+            <span class="top-cost">¥23.4<small>/天</small></span>
+          </div>
+          <div class="top-row" data-od-id="top-tnf">
+            <span class="rank">3</span>
+            <div class="top-info">
+              <div class="nm">The North Face 冲锋衣</div>
+              <div class="bar"><i style="width:6%"></i></div>
+            </div>
+            <span class="top-cost">¥4.6<small>/天</small></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Dock -->
+      <nav class="dock" data-od-id="dock-stats">
+        <div class="dock-item" data-od-id="dock-tab-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span class="lb">首页</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-wishlist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          <span class="lb">愿望</span>
+        </div>
+        <div class="dock-item active" data-od-id="dock-tab-stats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
+          <span class="lb">统计</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-me">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span class="lb">我的</span>
+        </div>
+      </nav>
+    </section>
+    </div>
+
+
+    <!-- ============ SCREEN 4: PROFILE ============ -->
+    <div class="slot">
+      <div class="phone-frame-label">
+        <span class="name">个人页 · 设置与数据</span>
+        <span class="num">04</span>
+      </div>
+    <section class="phone" data-od-id="screen-profile">
+
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="right">
+          <svg class="signal" width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.5" height="4" rx="1"/><rect x="4" y="5" width="2.5" height="6" rx="1"/><rect x="8" y="2.5" width="2.5" height="8.5" rx="1"/><rect x="12" y="0" width="2.5" height="11" rx="1"/></svg>
+          <svg class="wifi" width="14" height="10" viewBox="0 0 14 10" fill="currentColor"><path d="M7 8.5a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4zM3.6 6.3a4.8 4.8 0 016.8 0l-1.1 1.1a3.2 3.2 0 00-4.6 0L3.6 6.3zM1 3.7a8.8 8.8 0 0112 0l-1.1 1.1a7.2 7.2 0 00-9.8 0L1 3.7z"/></svg>
+          <svg class="batt" width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.6" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <header class="app-header">
+        <div>
+          <small>Me</small>
+          <div class="app-title">我的</div>
+        </div>
+        <div class="icon-row">
+          <button class="icon-btn" aria-label="设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+
+        <!-- Profile hero -->
+        <div class="profile-hero">
+          <div class="avatar">林</div>
+          <div>
+            <div class="profile-name">林川</div>
+            <div class="profile-sub">使用 拾物 已 287 天</div>
+          </div>
+          <div class="profile-stats">
+            <div class="profile-stat">
+              <div class="v">24</div>
+              <div class="k">物品</div>
+            </div>
+            <div class="profile-stat">
+              <div class="v">5</div>
+              <div class="k">心愿</div>
+            </div>
+            <div class="profile-stat">
+              <div class="v">12</div>
+              <div class="k">回收</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data management group -->
+        <div class="menu" data-od-id="menu-data">
+          <div class="menu-row" data-od-id="menu-import">
+            <div class="ico accent">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <div class="lbl">导入物品<small>从 CSV / Excel / 旧版备份</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="menu-row" data-od-id="menu-export">
+            <div class="ico accent">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="lbl">导出数据<small>CSV / JSON / PDF 报表</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="menu-row" data-od-id="menu-backup">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9 9 9 0 0 1 6.4 2.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+            </div>
+            <div class="lbl">自动备份<small>本地快照 · 每日导出 JSON</small></div>
+            <span class="badge">已开启</span>
+          </div>
+          <div class="menu-row" data-od-id="menu-trash">
+            <div class="ico warn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            </div>
+            <div class="lbl">回收站<small>12 件 · 30 天后自动清除</small></div>
+            <span class="badge">12</span>
+          </div>
+        </div>
+
+        <!-- Local backup status -->
+        <div class="storage-card" data-od-id="storage-card">
+          <div class="storage-head">
+            <div class="lbl">本地备份</div>
+            <div class="val">3 / 10 份快照 · 42.8 MB</div>
+          </div>
+          <div class="storage-bar">
+            <div class="fill" style="width:30%"></div>
+          </div>
+          <div class="storage-foot">
+            <span>上次备份 12 分钟前</span>
+            <span class="sync">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              仅保存在本机
+            </span>
+          </div>
+        </div>
+
+        <!-- App settings group -->
+        <div class="menu" data-od-id="menu-settings" style="margin-top:12px">
+          <div class="menu-row" data-od-id="menu-currency">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9h5a2 2 0 1 1 0 4H10a2 2 0 1 0 0 4h6"/><path d="M12 6v2M12 16v2"/></svg>
+            </div>
+            <div class="lbl">货币与单位<small>人民币 · CNY</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="menu-row" data-od-id="menu-categories">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            </div>
+            <div class="lbl">分类管理<small>数码 / 服饰 / 阅读 / 家居 …</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="menu-row" data-od-id="menu-theme">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+            </div>
+            <div class="lbl">外观主题<small>当前：暖白 · 跟随系统</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <div class="menu-row" data-od-id="menu-about">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="8.01"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+            </div>
+            <div class="lbl">关于拾物<small>v0.1.0 · Made with care</small></div>
+            <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Dock -->
+      <nav class="dock" data-od-id="dock-profile">
+        <div class="dock-item" data-od-id="dock-tab-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+          <span class="lb">首页</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-wishlist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          <span class="lb">愿望</span>
+        </div>
+        <div class="dock-item" data-od-id="dock-tab-stats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="14"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
+          <span class="lb">统计</span>
+        </div>
+        <div class="dock-item active" data-od-id="dock-tab-me">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
+          <span class="lb">我的</span>
+        </div>
+      </nav>
+    </section>
+    </div>
+
+
+    <!-- ============ SCREEN 5: ITEM FORM (ADD / EDIT SHARED) ============ -->
+    <div class="slot">
+      <div class="phone-frame-label">
+        <span class="name">新增 / 编辑 · 物品表单</span>
+        <span class="num">05</span>
+      </div>
+    <section class="phone" data-od-id="screen-item-form">
+      <div class="status-bar">
+        <span>9:41</span>
+        <span class="right">
+          <svg class="signal" width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="2.5" height="4" rx="1"/><rect x="4" y="5" width="2.5" height="6" rx="1"/><rect x="8" y="2.5" width="2.5" height="8.5" rx="1"/><rect x="12" y="0" width="2.5" height="11" rx="1"/></svg>
+          <svg class="wifi" width="14" height="10" viewBox="0 0 14 10" fill="currentColor"><path d="M7 8.5a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4zM3.6 6.3a4.8 4.8 0 016.8 0l-1.1 1.1a3.2 3.2 0 00-4.6 0L3.6 6.3zM1 3.7a8.8 8.8 0 0112 0l-1.1 1.1a7.2 7.2 0 00-9.8 0L1 3.7z"/></svg>
+          <svg class="batt" width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.6" fill="currentColor" opacity=".4"/></svg>
+        </span>
+      </div>
+
+      <div class="grabber"></div>
+      <header class="sheet-nav">
+        <button class="icon-btn" aria-label="取消">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <span class="ttl">新增物品</span>
+        <span class="spacer" aria-hidden="true"></span>
+      </header>
+
+      <div class="body form-body">
+        <div class="form">
+
+          <!-- Photos -->
+          <div class="field" data-od-id="form-photo">
+            <div class="f-label">照片 <span>选填 · 最多 6 张</span></div>
+            <div class="photo-row">
+              <div class="photo-slot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                添加
+              </div>
+              <div class="photo-slot ghost"></div>
+              <div class="photo-slot ghost"></div>
+            </div>
+          </div>
+
+          <!-- Name -->
+          <div class="field" data-od-id="form-name">
+            <div class="f-label">名称 <span class="req">必填</span></div>
+            <div class="input focus">
+              <span class="ph">例:Sony WH-1000XM5 无线降噪耳机</span>
+            </div>
+          </div>
+
+          <!-- Category -->
+          <div class="field" data-od-id="form-category">
+            <div class="f-label">分类 <span class="req">必选</span></div>
+            <div class="cat-row">
+              <span class="chip active">数码</span>
+              <span class="chip">服饰</span>
+              <span class="chip">阅读</span>
+              <span class="chip">家居</span>
+              <span class="chip">收藏</span>
+              <span class="chip">+ 新建</span>
+            </div>
+          </div>
+
+          <!-- Price + purchase date -->
+          <div class="f-2col">
+            <div class="field" data-od-id="form-price">
+              <div class="f-label">价格 <span class="req">必填</span></div>
+              <div class="input">
+                <span class="unit">¥</span>
+                <span class="ph">0.00</span>
+              </div>
+            </div>
+            <div class="field" data-od-id="form-date">
+              <div class="f-label">购入日期</div>
+              <div class="input">
+                <span>2026-08-01</span>
+                <span class="tail">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Derived-metric logic -->
+          <div class="calc-hint" data-od-id="form-calc-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>保存后自动计算:<b>日均成本 = 价格 ÷ 持有天数</b></span>
+          </div>
+
+          <!-- Reuse contract: edit mode deltas -->
+          <div class="annot" data-od-id="edit-mode-notes">
+            <div class="a-t">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+              复用逻辑 · 编辑已有物品时
+            </div>
+            <div class="a-r"><span class="k">标题按钮</span><span>「新增物品 / 添加物品」→ <b>「编辑物品 / 保存修改」</b></span></div>
+            <div class="a-r"><span class="k">数据预填</span><span>载入当前值,照片位显示已有图片</span></div>
+            <div class="a-r"><span class="k">同一校验</span><span>名称必填、价格 ≥ 0,两种模式共用</span></div>
+            <div class="a-r"><span class="k">危险操作</span><span>底部出现 <b>「删除物品」</b>(二次确认后移入回收站)</span></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Bottom CTA -->
+      <div class="sheet-cta">
+        <div class="btn btn-primary" data-od-id="form-submit">添加物品</div>
+        <div class="btn btn-danger-ghost" data-od-id="form-delete">
+          删除物品 <span class="tag-mini">仅编辑模式</span>
+        </div>
+      </div>
+    </section>
+    </div>
+
+  </div>
+
+  <div class="note-line">
+    所有数据均为示例占位 · 真实接入后由<em>数据 / 导入 / 本地备份</em>模块替换
+  </div>
+
+  <footer class="foot">
+    <div>拾物 · 物品管理 APP · 多屏框架 v0.1</div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--accent)"></i>主色</span>
+      <span><i class="swatch" style="background:var(--warn)"></i>提醒</span>
+      <span><i class="swatch" style="background:var(--danger)"></i>警示</span>
+      <span><i class="swatch" style="background:var(--bg);border:1px solid var(--border)"></i>画布</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
