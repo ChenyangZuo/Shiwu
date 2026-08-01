@@ -48,11 +48,9 @@ import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Fg2
 import com.zzzcy.shiwu.ui.theme.Muted
-import com.zzzcy.shiwu.ui.theme.Muted2
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
-import com.zzzcy.shiwu.ui.theme.Surface
 
 @Composable
 fun HomeScreen(onAddClick: () -> Unit) {
@@ -135,17 +133,6 @@ private fun SearchBar() {
             fontSize = 12.5.sp,
             color = Muted,
             letterSpacing = 0.2.sp
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = "⌘ K",
-            fontFamily = NumFamily,
-            fontSize = 10.sp,
-            color = Muted2,
-            modifier = Modifier
-                .background(Surface, RoundedCornerShape(5.dp))
-                .border(1.dp, Border, RoundedCornerShape(5.dp))
-                .padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }

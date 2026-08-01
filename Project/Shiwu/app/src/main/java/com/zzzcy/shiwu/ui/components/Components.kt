@@ -1,15 +1,21 @@
 package com.zzzcy.shiwu.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +31,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -290,7 +297,7 @@ fun Dock(
         DockTab.STATS,
         DockTab.PROFILE
     )
-    Row(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp)
@@ -298,46 +305,65 @@ fun Dock(
             .shadow(12.dp, RoundedCornerShape(26.dp), spotColor = Color(0x2E14120C))
             .background(Surface.copy(alpha = 0.94f), RoundedCornerShape(26.dp))
             .border(1.dp, Border, RoundedCornerShape(26.dp))
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        tabs.forEach { tab ->
-            val active = tab == selected
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(18.dp))
-                    .clickable { onSelect(tab) }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+        val dockWidth = maxWidth
+        // 内容区与指示条共用同一坐标系（含 6dp 内边距），保证三者精确对齐
+        Box(Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    Modifier
-                        .size(width = 16.dp, height = 2.5.dp)
-                        .background(if (active) Accent else Color.Transparent, RoundedCornerShape(2.dp))
-                )
-                Spacer(Modifier.height(3.dp))
-                Icon(
-                    imageVector = when (tab) {
-                        DockTab.HOME -> Icons.Outlined.Home
-                        DockTab.WISHLIST -> if (active) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
-                        DockTab.STATS -> Icons.Outlined.BarChart
-                        DockTab.PROFILE -> if (active) Icons.Outlined.Person else Icons.Outlined.Person
-                    },
-                    contentDescription = tab.label,
-                    tint = if (active) Accent else Muted,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = tab.label,
-                    fontSize = 9.5.sp,
-                    color = if (active) Accent else Muted,
-                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    letterSpacing = 0.4.sp
-                )
+                tabs.forEach { tab ->
+                    val active = tab == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { onSelect(tab) }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // 占位保持图标位置稳定（真实指示条为上方滑动动画）
+                        Spacer(Modifier.size(width = 16.dp, height = 2.5.dp))
+                        Spacer(Modifier.height(3.dp))
+                        Icon(
+                            imageVector = when (tab) {
+                                DockTab.HOME -> Icons.Outlined.Home
+                                DockTab.WISHLIST -> if (active) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
+                                DockTab.STATS -> Icons.Outlined.BarChart
+                                DockTab.PROFILE -> Icons.Outlined.Person
+                            },
+                            contentDescription = tab.label,
+                            tint = if (active) Accent else Muted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = tab.label,
+                            fontSize = 9.5.sp,
+                            color = if (active) Accent else Muted,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            letterSpacing = 0.4.sp
+                        )
+                    }
+                }
             }
+
+            // 顶部激活指示条：随选中标签平滑滑动
+            val slotWidth = (dockWidth - 12.dp) / 4
+            val indicatorOffset by animateDpAsState(
+                targetValue = slotWidth * (selected.ordinal + 0.5f) - (dockWidth - 12.dp) / 2,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                label = "dockIndicator"
+            )
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(x = indicatorOffset)
+                    .size(width = 16.dp, height = 2.5.dp)
+                    .background(Accent, RoundedCornerShape(2.dp))
+            )
         }
     }
 }

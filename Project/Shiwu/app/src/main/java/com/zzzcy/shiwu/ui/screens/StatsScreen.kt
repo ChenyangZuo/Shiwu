@@ -78,9 +78,11 @@ fun StatsScreen() {
                 PillChip("全年", active = false)
             }
 
-            TrendPanel()
-            CategoryPanel()
-            TopCostPanel()
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TrendPanel()
+                CategoryPanel()
+                TopCostPanel()
+            }
         }
 
         Spacer(Modifier.height(120.dp))

@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,7 +46,6 @@ import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Border2
 import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
-import com.zzzcy.shiwu.ui.theme.Fg2
 import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.Muted2
 import com.zzzcy.shiwu.ui.theme.NumFamily
@@ -61,7 +61,11 @@ fun ItemFormScreen(onClose: () -> Unit) {
             .fillMaxSize()
             .background(Surface)
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
             // 顶部拖拽条 + 导航
             Box(
                 modifier = Modifier
@@ -94,7 +98,8 @@ fun ItemFormScreen(onClose: () -> Unit) {
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp)
-                    .padding(bottom = 150.dp)
+                    .padding(bottom = 150.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 PhotoField()
                 TextField(label = "名称", required = "必填", placeholder = "例:Sony WH-1000XM5 无线降噪耳机", focused = true)
@@ -108,7 +113,6 @@ fun ItemFormScreen(onClose: () -> Unit) {
                     }
                 }
                 CalcHint()
-                EditModeNotes()
             }
         }
 
@@ -122,6 +126,7 @@ fun ItemFormScreen(onClose: () -> Unit) {
                         startY = 0f
                     )
                 )
+                .navigationBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
             Box(
@@ -139,34 +144,6 @@ fun ItemFormScreen(onClose: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     color = OnAccent,
                     letterSpacing = 0.5.sp
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(38.dp)
-                    .dashedBorder(Danger, cornerRadius = 14.dp)
-                    .clickable(onClick = {}),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "删除物品",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Danger
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "仅编辑模式",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.6.sp,
-                    color = Danger.copy(alpha = 0.8f),
-                    modifier = Modifier
-                        .border(1.dp, Danger.copy(alpha = 0.8f), RoundedCornerShape(50))
-                        .padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
         }
@@ -350,58 +327,6 @@ private fun CalcHint() {
             fontSize = 10.5.sp,
             fontWeight = FontWeight.SemiBold,
             color = Accent
-        )
-    }
-}
-
-@Composable
-private fun EditModeNotes() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Bg2.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
-            .dashedBorder(Border2, cornerRadius = 14.dp)
-            .padding(13.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Outlined.Edit,
-                contentDescription = null,
-                tint = Muted,
-                modifier = Modifier.size(12.dp)
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = "复用逻辑 · 编辑已有物品时",
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Fg2,
-                letterSpacing = 0.8.sp
-            )
-        }
-        Spacer(Modifier.height(7.dp))
-        EditNoteRow("标题按钮", "「新增物品 / 添加物品」→「编辑物品 / 保存修改」")
-        EditNoteRow("数据预填", "载入当前值,照片位显示已有图片")
-        EditNoteRow("同一校验", "名称必填、价格 ≥ 0,两种模式共用")
-        EditNoteRow("危险操作", "底部出现「删除物品」(二次确认后移入回收站)")
-    }
-}
-
-@Composable
-private fun EditNoteRow(key: String, value: String) {
-    Row(Modifier.padding(vertical = 2.5.dp)) {
-        Text(
-            text = key,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = Fg2,
-            modifier = Modifier.width(56.dp)
-        )
-        Text(
-            text = value,
-            fontSize = 10.5.sp,
-            color = Muted,
-            lineHeight = 16.sp
         )
     }
 }

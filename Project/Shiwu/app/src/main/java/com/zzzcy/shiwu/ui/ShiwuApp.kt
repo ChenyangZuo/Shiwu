@@ -1,5 +1,13 @@
 package com.zzzcy.shiwu.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,23 +43,38 @@ fun ShiwuApp() {
             .fillMaxSize()
             .background(Bg)
     ) {
+        // 表单打开时，系统返回手势/返回键只关闭表单，不退出应用
+        BackHandler(enabled = showForm) {
+            showForm = false
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            when (currentTab) {
-                DockTab.HOME -> HomeScreen(onAddClick = { showForm = true })
-                DockTab.WISHLIST -> WishlistScreen(onAddClick = { showForm = true })
-                DockTab.STATS -> StatsScreen()
-                DockTab.PROFILE -> ProfileScreen()
+            Crossfade(
+                targetState = currentTab,
+                animationSpec = tween(durationMillis = 220),
+                label = "tabContent"
+            ) { tab ->
+                when (tab) {
+                    DockTab.HOME -> HomeScreen(onAddClick = { showForm = true })
+                    DockTab.WISHLIST -> WishlistScreen(onAddClick = { showForm = true })
+                    DockTab.STATS -> StatsScreen()
+                    DockTab.PROFILE -> ProfileScreen()
+                }
             }
 
             val showFab = currentTab == DockTab.HOME || currentTab == DockTab.WISHLIST
-            if (showFab) {
+            AnimatedVisibility(
+                visible = showFab,
+                enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.7f, animationSpec = tween(220)),
+                exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.7f, animationSpec = tween(160)),
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
                 Fab(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
                         .padding(end = 24.dp, bottom = 96.dp),
                     onClick = { showForm = true }
