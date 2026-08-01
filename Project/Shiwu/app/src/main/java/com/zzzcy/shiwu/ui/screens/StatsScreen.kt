@@ -1,5 +1,6 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -65,6 +67,7 @@ private val chartColors: List<Color>
 
 @Composable
 fun StatsScreen(items: List<Item>) {
+    val context = LocalContext.current
     var range by remember { mutableStateOf(6) } // 1=本月, 6=近半年, 12=全年
     val trend = remember(items, range) { ShiwuRepository.trendPoints(range) }
     val shares = remember(items) { ShiwuRepository.categoryShares() }
@@ -80,7 +83,11 @@ fun StatsScreen(items: List<Item>) {
             eyebrow = "Stats",
             title = "统计",
             actions = listOf(
-                { HeaderIconButton(Icons.Outlined.FileUpload, "导出报表") }
+                {
+                    HeaderIconButton(Icons.Outlined.FileUpload, "导出报表") {
+                        Toast.makeText(context, "该功能正在赶来的路上", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         )
 
