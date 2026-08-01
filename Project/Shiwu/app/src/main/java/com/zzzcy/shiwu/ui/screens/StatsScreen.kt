@@ -60,7 +60,8 @@ import com.zzzcy.shiwu.ui.theme.Surface
 import com.zzzcy.shiwu.ui.theme.Warn
 import java.util.Locale
 
-private val chartColors = listOf(Accent, Warn, Accent2, ChipFg, Border2)
+private val chartColors: List<Color>
+    @androidx.compose.runtime.Composable get() = listOf(Accent, Warn, Accent2, ChipFg, Border2)
 
 @Composable
 fun StatsScreen(items: List<Item>) {
@@ -151,6 +152,9 @@ private fun TrendPanel(trend: List<Pair<String, Double>>, totalValue: Double) {
 @Composable
 private fun TrendChart(data: List<Pair<String, Double>>) {
     val maxV = (data.maxOfOrNull { it.second } ?: 0.0).coerceAtLeast(1.0)
+    val border = Border
+    val accent = Accent
+    val surface = Surface
     Column {
         Canvas(
             modifier = Modifier
@@ -168,7 +172,7 @@ private fun TrendChart(data: List<Pair<String, Double>>) {
             listOf(0.25f, 0.5f, 0.75f).forEach { f ->
                 val y = size.height * f
                 drawLine(
-                    color = Border.copy(alpha = 0.45f),
+                    color = border.copy(alpha = 0.45f),
                     start = Offset(0f, y),
                     end = Offset(size.width, y),
                     strokeWidth = 1f
@@ -185,7 +189,7 @@ private fun TrendChart(data: List<Pair<String, Double>>) {
                 drawPath(
                     path = area,
                     brush = Brush.verticalGradient(
-                        colors = listOf(Accent.copy(alpha = 0.18f), Accent.copy(alpha = 0f)),
+                        colors = listOf(accent.copy(alpha = 0.18f), accent.copy(alpha = 0f)),
                         startY = 0f,
                         endY = size.height
                     )
@@ -194,10 +198,10 @@ private fun TrendChart(data: List<Pair<String, Double>>) {
                     moveTo(points.first().x, points.first().y)
                     points.drop(1).forEach { lineTo(it.x, it.y) }
                 }
-                drawPath(path = line, color = Accent, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+                drawPath(path = line, color = accent, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
                 val last = points.last()
-                drawCircle(color = Surface, radius = 6.dp.toPx(), center = last)
-                drawCircle(color = Accent, radius = 3.5.dp.toPx(), center = last)
+                drawCircle(color = surface, radius = 6.dp.toPx(), center = last)
+                drawCircle(color = accent, radius = 3.5.dp.toPx(), center = last)
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -298,6 +302,8 @@ private fun CategoryPanel(shares: List<Triple<String, Double, Double>>) {
 @Composable
 private fun DonutChart(shares: List<Triple<String, Double, Double>>) {
     val totalCount = ShiwuRepository.activeItems().size
+    val colors = chartColors
+    val bg2 = Bg2
     Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 13.dp.toPx()
@@ -305,7 +311,7 @@ private fun DonutChart(shares: List<Triple<String, Double, Double>>) {
             val topLeft = Offset(stroke / 2, stroke / 2)
             val arcSize = Size(diameter, diameter)
             drawArc(
-                color = Bg2,
+                color = bg2,
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
@@ -317,7 +323,7 @@ private fun DonutChart(shares: List<Triple<String, Double, Double>>) {
             shares.forEachIndexed { index, share ->
                 val sweep = (share.third * 360f).toFloat()
                 drawArc(
-                    color = chartColors[index % chartColors.size],
+                    color = colors[index % colors.size],
                     startAngle = start,
                     sweepAngle = sweep - 0.5f,
                     useCenter = false,

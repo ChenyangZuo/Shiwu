@@ -25,11 +25,15 @@ object ShiwuRepository {
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
+    private val _categories = MutableStateFlow(defaultCategories)
+    private val _themeMode = MutableStateFlow("system")
     private var nextItemId = 1L
     private var nextWishId = 1L
 
     val items: StateFlow<List<Item>> = _items.asStateFlow()
     val wishes: StateFlow<List<Wish>> = _wishes.asStateFlow()
+    val categories: StateFlow<List<String>> = _categories.asStateFlow()
+    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
     private val _userName = MutableStateFlow("林川")
     val userName: StateFlow<String> = _userName.asStateFlow()
@@ -40,6 +44,7 @@ object ShiwuRepository {
             dataFile = File(context.filesDir, "shiwu_data.json")
             prefs = context.getSharedPreferences("shiwu_prefs", Context.MODE_PRIVATE)
             _userName.value = prefs?.getString("user_name", "林川") ?: "林川"
+            _themeMode.value = prefs?.getString("theme_mode", "system") ?: "system"
             firstLaunchDay = prefs?.getLong("first_launch_day", -1L) ?: -1L
             if (firstLaunchDay < 0) {
                 firstLaunchDay = LocalDate.now().toEpochDay()
@@ -61,6 +66,41 @@ object ShiwuRepository {
         _userName.value = trimmed
         prefs?.edit()?.putString("user_name", trimmed)?.apply()
     }
+
+    /** 设置主题模式：light / dark / system */
+    fun setThemeMode(mode: String) {
+        if (mode !in listOf("light", "dark", "system")) return
+        _themeMode.value = mode
+        prefs?.edit()?.putString("theme_mode", mode)?.apply()
+    }
+
+    // ---------- 分类管理 ----------
+
+    fun addCategory(name: String): Boolean = mutate {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed in _categories.value) return@mutate false
+        _categories.value += trimmed
+        true
+    }
+
+    fun renameCategory(oldName: String, newName: String) = mutate {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty() || trimmed == oldName) return@mutate
+        _categories.value = _categories.value.map { if (it == oldName) trimmed else it }
+        _items.value = _items.value.map { if (it.category == oldName) it.copy(category = trimmed) else it }
+        _wishes.value = _wishes.value.map { if (it.category == oldName) it.copy(category = trimmed) else it }
+    }
+
+    fun deleteCategory(name: String) = mutate {
+        val fallback = _categories.value.firstOrNull { it != name } ?: "其他"
+        _categories.value = _categories.value.filterNot { it == name }
+        _items.value = _items.value.map { if (it.category == name) it.copy(category = fallback) else it }
+        _wishes.value = _wishes.value.map { if (it.category == name) it.copy(category = fallback) else it }
+    }
+
+    fun categoryUsage(name: String): Int =
+        _items.value.count { it.category == name && !it.deleted } +
+            _wishes.value.count { it.category == name && !it.purchased }
 
     // ---------- 查询 ----------
 
@@ -223,6 +263,7 @@ object ShiwuRepository {
             put("exportedAt", System.currentTimeMillis())
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
+            put("categories", JSONArray(_categories.value))
         }.toString(1)
     }
 
@@ -241,6 +282,12 @@ object ShiwuRepository {
             val wish = wishFromJson(warr.getJSONObject(i))
             _wishes.value += wish.copy(id = nextWishId++, createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis())
             imported++
+        }
+        val carr = root.optJSONArray("categories")
+        if (carr != null) {
+            val merged = _categories.value.toMutableSet()
+            for (i in 0 until carr.length()) merged.add(carr.getString(i))
+            _categories.value = merged.toList()
         }
         imported
     }
@@ -298,8 +345,14 @@ object ShiwuRepository {
             val wishes = ArrayList<Wish>()
             val warr = root.optJSONArray("wishes") ?: JSONArray()
             for (i in 0 until warr.length()) wishes.add(wishFromJson(warr.getJSONObject(i)))
+            val categories = ArrayList<String>()
+            val carr = root.optJSONArray("categories")
+            if (carr != null) {
+                for (i in 0 until carr.length()) categories.add(carr.getString(i))
+            }
             _items.value = items
             _wishes.value = wishes
+            if (categories.isNotEmpty()) _categories.value = categories
         } catch (_: Exception) {
             seed()
         }
@@ -312,6 +365,7 @@ object ShiwuRepository {
             put("nextWishId", nextWishId)
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
+            put("categories", JSONArray(_categories.value))
         }
         f.writeText(root.toString(1))
     }
@@ -342,8 +396,12 @@ object ShiwuRepository {
         nextWishId = 6
         _items.value = items
         _wishes.value = wishes
+        _categories.value = defaultCategories
         save()
     }
+
 }
+
+private val defaultCategories = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
 
 private fun LocalDate.yearMonth(): YearMonth = YearMonth.of(year, monthValue)

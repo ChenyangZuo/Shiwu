@@ -272,13 +272,13 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = NumFamily,
-                    color = Fg,
                     letterSpacing = 0.8.sp,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
                         .background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(50))
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    color = Color(0xFF1B1B19)
                 )
                 Text(
                     text = if (item.retired) "服役 ${item.serviceDays}天" else "${item.serviceDays}天",
@@ -297,12 +297,12 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
                         text = "已退役",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Fg2,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(8.dp)
                             .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(50))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                        color = Color(0xFF1B1B19)
                     )
                 }
             }

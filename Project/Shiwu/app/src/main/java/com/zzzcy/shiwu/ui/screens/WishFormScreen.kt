@@ -2,6 +2,7 @@ package com.zzzcy.shiwu.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +37,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -45,6 +49,7 @@ import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.dashedBorder
 import com.zzzcy.shiwu.ui.theme.Accent
+import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border2
 import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
@@ -71,6 +76,8 @@ fun WishFormScreen(
     var note by remember(editingWish?.id) { mutableStateOf(editingWish?.note ?: "") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewCategory by remember { mutableStateOf(false) }
+    var newCategoryText by remember { mutableStateOf("") }
 
     fun save() {
         val price = priceText.toDoubleOrNull()
@@ -162,7 +169,7 @@ fun WishFormScreen(
                 CategoryField(
                     selected = category,
                     onSelect = { category = it },
-                    onCreateNew = { error = null }
+                    onCreateNew = { showNewCategory = true }
                 )
                 FormTextField(
                     label = "预计价格",
@@ -275,6 +282,40 @@ fun WishFormScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                }
+            )
+        }
+
+        if (showNewCategory) {
+            AlertDialog(
+                onDismissRequest = { showNewCategory = false },
+                title = { Text("新建分类") },
+                text = {
+                    BasicTextField(
+                        value = newCategoryText,
+                        onValueChange = { newCategoryText = it },
+                        textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                        cursorBrush = SolidColor(Accent),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Bg2, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val trimmed = newCategoryText.trim()
+                        if (trimmed.isNotBlank()) {
+                            ShiwuRepository.addCategory(trimmed)
+                            category = trimmed
+                            newCategoryText = ""
+                            showNewCategory = false
+                        }
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewCategory = false }) { Text("取消") }
                 }
             )
         }

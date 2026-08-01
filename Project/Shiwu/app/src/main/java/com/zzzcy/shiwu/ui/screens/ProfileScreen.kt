@@ -85,10 +85,13 @@ import java.util.Locale
 fun ProfileScreen(
     items: List<Item>,
     wishes: List<Wish>,
-    onOpenTrash: () -> Unit
+    onOpenTrash: () -> Unit,
+    onOpenCategories: () -> Unit,
+    onOpenTheme: () -> Unit
 ) {
     val context = LocalContext.current
     val userName by ShiwuRepository.userName.collectAsState()
+    val themeMode by ShiwuRepository.themeMode.collectAsState()
     var showEditName by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
     val activeCount = items.count { !it.deleted }
@@ -198,8 +201,18 @@ fun ProfileScreen(
             MenuGroup(
                 modifier = Modifier.padding(top = 12.dp),
                 rows = listOf(
-                    MenuRowData("分类管理", "数码 / 服饰 / 阅读 / 家居 …", Icons.Outlined.GridView),
-                    MenuRowData("外观主题", "当前：暖白 · 跟随系统", Icons.Outlined.DarkMode),
+                    MenuRowData(
+                        "分类管理",
+                        "数码 / 服饰 / 阅读 / 家居 …",
+                        Icons.Outlined.GridView,
+                        onClick = onOpenCategories
+                    ),
+                    MenuRowData(
+                        "外观主题",
+                        themeLabel(themeMode),
+                        Icons.Outlined.DarkMode,
+                        onClick = onOpenTheme
+                    ),
                     MenuRowData(
                         "关于拾物",
                         "v${appVersion()} · Made with care",
@@ -248,6 +261,12 @@ fun ProfileScreen(
             }
         )
     }
+}
+
+private fun themeLabel(mode: String): String = when (mode) {
+    "light" -> "当前：暖白"
+    "dark" -> "当前：深色"
+    else -> "当前：跟随系统"
 }
 
 @Composable

@@ -35,11 +35,13 @@ import com.zzzcy.shiwu.ui.components.DockTab
 import com.zzzcy.shiwu.ui.components.Fab
 import com.zzzcy.shiwu.ui.components.RetiredFilter
 import com.zzzcy.shiwu.ui.screens.HomeScreen
+import com.zzzcy.shiwu.ui.screens.CategoryManagementScreen
 import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
 import com.zzzcy.shiwu.ui.screens.ProfileScreen
 import com.zzzcy.shiwu.ui.screens.StatsScreen
 import com.zzzcy.shiwu.ui.screens.TrashScreen
+import com.zzzcy.shiwu.ui.screens.ThemeScreen
 import com.zzzcy.shiwu.ui.screens.WishFormScreen
 import com.zzzcy.shiwu.ui.screens.WishlistScreen
 import com.zzzcy.shiwu.ui.theme.Bg
@@ -60,6 +62,8 @@ fun ShiwuApp() {
     var editingItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingWishId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    var showCategories by rememberSaveable { mutableStateOf(false) }
+    var showTheme by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
 
     // 覆盖层内容在退出动画期间保留：visible 状态被置空时，动画仍能带着旧内容滑出
@@ -79,11 +83,13 @@ fun ShiwuApp() {
     }
 
     // 返回手势优先级：表单 > 详情 > 回收站 > 默认
-    BackHandler(enabled = formKind != null || detailItemId != null || showTrash) {
+    BackHandler(enabled = formKind != null || detailItemId != null || showTrash || showCategories || showTheme) {
         when {
             formKind != null -> closeForm()
             detailItemId != null -> detailItemId = null
             showTrash -> showTrash = false
+            showCategories -> showCategories = false
+            showTheme -> showTheme = false
         }
     }
 
@@ -137,7 +143,9 @@ fun ShiwuApp() {
                     DockTab.PROFILE -> ProfileScreen(
                         items = items,
                         wishes = wishes,
-                        onOpenTrash = { showTrash = true }
+                        onOpenTrash = { showTrash = true },
+                        onOpenCategories = { showCategories = true },
+                        onOpenTheme = { showTheme = true }
                     )
                 }
             }
@@ -220,6 +228,36 @@ fun ShiwuApp() {
             ) + fadeOut(tween(durationMillis = 180))
         ) {
             TrashScreen(onClose = { showTrash = false })
+        }
+
+        // 分类管理
+        AnimatedVisibility(
+            visible = showCategories,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
+            CategoryManagementScreen(onClose = { showCategories = false })
+        }
+
+        // 外观主题
+        AnimatedVisibility(
+            visible = showTheme,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
+            ThemeScreen(onClose = { showTheme = false })
         }
 
         // 新增 / 编辑表单（底部滑入）

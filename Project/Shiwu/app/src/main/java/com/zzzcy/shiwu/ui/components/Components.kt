@@ -139,7 +139,8 @@ fun OverviewCard(
     dark: Boolean = false
 ) {
     val brush = if (dark) {
-        Brush.verticalGradient(listOf(Fg, Ink2))
+        // 深色概览卡固定为深色渐变（两种主题下保持一致）
+        Brush.verticalGradient(listOf(Color(0xFF1B1B19), Color(0xFF2D2D29)))
     } else {
         Brush.verticalGradient(listOf(Accent, AccentStrong))
     }

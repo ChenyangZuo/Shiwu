@@ -57,6 +57,8 @@ import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
 import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
+import com.zzzcy.shiwu.ui.theme.ChipBg
+import com.zzzcy.shiwu.ui.theme.ChipFg
 import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Fg2
@@ -136,15 +138,16 @@ fun ItemDetailScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = item.category,
+                Text(
+                    text = item.category,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = NumFamily,
-                        color = Fg2,
                         modifier = Modifier
-                            .background(Color(0xFFF0EAD8), RoundedCornerShape(50))
+                            .background(ChipBg, RoundedCornerShape(50))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ,
+                        color = ChipFg
                     )
                     Spacer(Modifier.width(8.dp))
                     if (item.retired) {
@@ -152,10 +155,11 @@ fun ItemDetailScreen(
                             text = "已退役",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Muted,
                             modifier = Modifier
-                                .background(Color(0xFFEFEBE2), RoundedCornerShape(50))
+                                .background(Bg2, RoundedCornerShape(50))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ,
+                            color = Muted
                         )
                     } else {
                         Text(
@@ -347,7 +351,7 @@ private fun PhotoStrip(photos: List<String>) {
 private fun DetailStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .background(Color(0xFFF7F4EE), RoundedCornerShape(12.dp))
+            .background(Bg2, RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
         Text(

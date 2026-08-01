@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,8 +90,6 @@ import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-
-val knownCategories = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -401,8 +400,10 @@ fun ItemFormScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        if (newCategoryText.isNotBlank()) {
-                            category = newCategoryText.trim()
+                        val trimmed = newCategoryText.trim()
+                        if (trimmed.isNotBlank()) {
+                            ShiwuRepository.addCategory(trimmed)
+                            category = trimmed
                             newCategoryText = ""
                             showNewCategory = false
                         }
@@ -636,7 +637,8 @@ internal fun CategoryField(
     Column {
         FieldLabel("分类", required = true)
         Spacer(Modifier.height(6.dp))
-        val chips = if (selected !in knownCategories) knownCategories + selected else knownCategories
+        val categories by ShiwuRepository.categories.collectAsState()
+        val chips = if (selected !in categories) categories + selected else categories
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
