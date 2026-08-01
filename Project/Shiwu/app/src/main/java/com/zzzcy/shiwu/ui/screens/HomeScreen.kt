@@ -83,7 +83,8 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val stats = ShiwuRepository.homeStats()
-    val active = items.filter { !it.deleted }
+    // 按购入时间倒序：最新购入的排前面，越早买的越靠后
+    val active = items.filter { !it.deleted }.sortedByDescending { it.purchaseDate }
     val filtered = active.filter { item ->
         val matchQuery = query.isBlank() ||
             item.name.contains(query.trim(), ignoreCase = true) ||
