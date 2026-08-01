@@ -7,6 +7,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -91,7 +94,18 @@ fun ShiwuApp() {
             )
         }
 
-        if (showForm) {
+        // 新增物品表单：自底部滑入，关闭时向下滑出
+        AnimatedVisibility(
+            visible = showForm,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
             ItemFormScreen(onClose = { showForm = false })
         }
     }
