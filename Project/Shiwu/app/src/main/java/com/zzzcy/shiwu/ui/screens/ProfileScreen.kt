@@ -263,7 +263,7 @@ fun ProfileScreen(
                         onClick = onOpenTheme
                     ),
                     MenuRowData(
-                        "关于拾物",
+                        "关于时物",
                         "v${appVersion()} · Made with care",
                         Icons.Outlined.Info
                     )
@@ -452,7 +452,7 @@ private fun ProfileHero(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "使用 拾物 已 $memberDays 天",
+                text = "使用 时物 已 $memberDays 天",
                 fontSize = 11.5.sp,
                 color = Muted,
                 letterSpacing = 0.2.sp
