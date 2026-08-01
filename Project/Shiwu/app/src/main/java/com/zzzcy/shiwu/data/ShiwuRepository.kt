@@ -1,6 +1,7 @@
 package com.zzzcy.shiwu.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,8 @@ object ShiwuRepository {
     private val lock = Any()
     private var dataFile: File? = null
     private var initialized = false
+    private var prefs: SharedPreferences? = null
+    private var firstLaunchDay: Long = LocalDate.now().toEpochDay()
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
@@ -28,13 +31,35 @@ object ShiwuRepository {
     val items: StateFlow<List<Item>> = _items.asStateFlow()
     val wishes: StateFlow<List<Wish>> = _wishes.asStateFlow()
 
+    private val _userName = MutableStateFlow("林川")
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
     fun init(context: Context) {
         synchronized(lock) {
             if (initialized) return
             dataFile = File(context.filesDir, "shiwu_data.json")
+            prefs = context.getSharedPreferences("shiwu_prefs", Context.MODE_PRIVATE)
+            _userName.value = prefs?.getString("user_name", "林川") ?: "林川"
+            firstLaunchDay = prefs?.getLong("first_launch_day", -1L) ?: -1L
+            if (firstLaunchDay < 0) {
+                firstLaunchDay = LocalDate.now().toEpochDay()
+                prefs?.edit()?.putLong("first_launch_day", firstLaunchDay)?.apply()
+            }
             load()
             initialized = true
         }
+    }
+
+    /** 使用天数（自首次启动起） */
+    val memberDays: Int
+        get() = (LocalDate.now().toEpochDay() - firstLaunchDay).toInt().coerceAtLeast(0)
+
+    /** 更新昵称并持久化 */
+    fun updateUserName(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed == _userName.value) return
+        _userName.value = trimmed
+        prefs?.edit()?.putString("user_name", trimmed)?.apply()
     }
 
     // ---------- 查询 ----------

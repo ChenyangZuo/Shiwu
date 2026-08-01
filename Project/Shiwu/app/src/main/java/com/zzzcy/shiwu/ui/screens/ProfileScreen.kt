@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,21 +30,29 @@ import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Upload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +88,9 @@ fun ProfileScreen(
     onOpenTrash: () -> Unit
 ) {
     val context = LocalContext.current
+    val userName by ShiwuRepository.userName.collectAsState()
+    var showEditName by remember { mutableStateOf(false) }
+    var nameInput by remember { mutableStateOf("") }
     val activeCount = items.count { !it.deleted }
     val trashCount = items.count { it.deleted }
     val wishCount = wishes.count { !it.purchased }
@@ -121,13 +133,21 @@ fun ProfileScreen(
         AppHeader(
             eyebrow = "Me",
             title = "我的",
-            actions = listOf(
-                { HeaderIconButton(Icons.Outlined.Settings, "设置") }
-            )
+            actions = emptyList()
         )
 
         Column(Modifier.padding(horizontal = 18.dp)) {
-            ProfileHero(activeCount, wishCount, trashCount)
+            ProfileHero(
+                name = userName,
+                memberDays = ShiwuRepository.memberDays,
+                itemCount = activeCount,
+                wishCount = wishCount,
+                trashCount = trashCount,
+                onClick = {
+                    nameInput = userName
+                    showEditName = true
+                }
+            )
 
             Spacer(Modifier.height(8.dp))
 
@@ -191,6 +211,43 @@ fun ProfileScreen(
 
         Spacer(Modifier.height(120.dp))
     }
+
+    if (showEditName) {
+        AlertDialog(
+            onDismissRequest = { showEditName = false },
+            title = { Text("修改昵称") },
+            text = {
+                Column {
+                    Text(
+                        text = "昵称将显示在个人页，头像取昵称首字",
+                        fontSize = 12.sp,
+                        color = Muted
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    BasicTextField(
+                        value = nameInput,
+                        onValueChange = { if (it.length <= 16) nameInput = it },
+                        textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                        cursorBrush = SolidColor(Accent),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Bg2, RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ShiwuRepository.updateUserName(nameInput)
+                    showEditName = false
+                }) { Text("保存", color = Accent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditName = false }) { Text("取消") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -206,10 +263,19 @@ private fun appVersion(): String {
 }
 
 @Composable
-private fun ProfileHero(itemCount: Int, wishCount: Int, trashCount: Int) {
+private fun ProfileHero(
+    name: String,
+    memberDays: Int,
+    itemCount: Int,
+    wishCount: Int,
+    trashCount: Int,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -220,7 +286,7 @@ private fun ProfileHero(itemCount: Int, wishCount: Int, trashCount: Int) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "林",
+                text = name.firstOrNull()?.toString() ?: "拾",
                 fontFamily = SerifFamily,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -230,19 +296,28 @@ private fun ProfileHero(itemCount: Int, wishCount: Int, trashCount: Int) {
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
-                text = "林川",
+                text = name,
                 fontFamily = SerifFamily,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Fg
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = "使用 拾物 已 287 天",
-                fontSize = 11.5.sp,
-                color = Muted,
-                letterSpacing = 0.2.sp
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "使用 拾物 已 $memberDays 天 · 点击修改昵称",
+                    fontSize = 11.5.sp,
+                    color = Muted,
+                    letterSpacing = 0.2.sp
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = "修改昵称",
+                    tint = Muted2,
+                    modifier = Modifier.size(11.dp)
+                )
+            }
         }
         Spacer(Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
