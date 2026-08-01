@@ -294,7 +294,7 @@ fun WishFormScreen(
                     BasicTextField(
                         value = newCategoryText,
                         onValueChange = { newCategoryText = it },
-                        textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                        textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
                         cursorBrush = SolidColor(Accent),
                         singleLine = true,
                         modifier = Modifier

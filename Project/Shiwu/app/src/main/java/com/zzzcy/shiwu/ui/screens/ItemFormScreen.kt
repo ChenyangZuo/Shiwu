@@ -397,7 +397,7 @@ fun ItemFormScreen(
                         BasicTextField(
                             value = newCategoryText,
                             onValueChange = { newCategoryText = it },
-                            textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                            textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
                             cursorBrush = SolidColor(Accent),
                             singleLine = true,
                             modifier = Modifier
@@ -617,7 +617,7 @@ internal fun FormTextField(
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    textStyle = TextStyle(fontSize = 13.sp, color = Fg),
+                    textStyle = TextStyle(fontSize = 13.sp, color = Fg, lineHeight = 17.sp),
                     cursorBrush = SolidColor(Accent),
                     keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
                     singleLine = true,
@@ -627,6 +627,7 @@ internal fun FormTextField(
                     Text(
                         text = placeholder,
                         fontSize = 13.sp,
+                        lineHeight = 17.sp,
                         color = Muted2,
                         maxLines = 1
                     )

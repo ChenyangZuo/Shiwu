@@ -323,7 +323,7 @@ fun ProfileScreen(
                     BasicTextField(
                         value = nameInput,
                         onValueChange = { if (it.length <= 16) nameInput = it },
-                        textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                        textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
                         cursorBrush = SolidColor(Accent),
                         singleLine = true,
                         modifier = Modifier

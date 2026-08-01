@@ -172,7 +172,7 @@ fun ListSwitcherScreen(onClose: () -> Unit) {
                 BasicTextField(
                     value = draft,
                     onValueChange = { if (it.length <= 16) draft = it },
-                    textStyle = TextStyle(fontSize = 14.sp, color = Fg),
+                    textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()

@@ -200,7 +200,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp, color = Fg),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp, color = Fg, lineHeight = 16.sp),
                 cursorBrush = SolidColor(Accent),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -209,6 +209,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
                 Text(
                     text = "搜索物品、品牌或标签",
                     fontSize = 12.5.sp,
+                    lineHeight = 16.sp,
                     color = Muted,
                     letterSpacing = 0.2.sp
                 )
