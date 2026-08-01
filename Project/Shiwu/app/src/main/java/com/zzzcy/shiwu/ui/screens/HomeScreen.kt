@@ -48,6 +48,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.Item
+import com.zzzcy.shiwu.data.ExpiryStatus
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
@@ -60,12 +61,14 @@ import com.zzzcy.shiwu.ui.components.SectionHead
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
+import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Fg2
 import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
+import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.util.PhotoUtils
 import com.zzzcy.shiwu.data.formatPrice
 
@@ -269,7 +272,18 @@ private fun EmptyState(onAddClick: () -> Unit) {
 
 @Composable
 private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
-    CardSurface(modifier = modifier) {
+    // 保质期高亮：临期（剩余不足 10%）黄框，已过期红框
+    val highlight = when (item.expiryStatus) {
+        ExpiryStatus.EXPIRED -> Danger
+        ExpiryStatus.EXPIRING -> Warn
+        else -> null
+    }
+    val cardModifier = if (highlight != null) {
+        modifier.border(2.dp, highlight, RoundedCornerShape(14.dp))
+    } else {
+        modifier
+    }
+    CardSurface(modifier = cardModifier) {
         Column(Modifier.padding(8.dp)) {
             val firstPhoto = remember(item.photos.firstOrNull()) {
                 item.photos.firstOrNull()?.let { PhotoUtils.decodeSampledBitmap(it, 640, 480)?.asImageBitmap() }

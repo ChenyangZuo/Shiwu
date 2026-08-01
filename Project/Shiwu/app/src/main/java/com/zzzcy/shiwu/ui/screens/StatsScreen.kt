@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.Item
+import com.zzzcy.shiwu.data.ExpiryStatus
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
@@ -61,6 +62,7 @@ import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Border2
 import com.zzzcy.shiwu.ui.theme.ChipFg
+import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Fg2
 import com.zzzcy.shiwu.ui.theme.Muted
@@ -114,6 +116,7 @@ fun StatsScreen(items: List<Item>) {
                 TrendPanel(trend, totalValue)
                 CategoryPanel(shares, items.count { !it.deleted })
                 TopCostPanel(items.filter { !it.deleted })
+                ExpiryPanel(items.filter { !it.deleted })
             }
         }
 
@@ -488,5 +491,126 @@ private fun CostRankRow(item: Item, rank: Int, maxCost: Double) {
             color = Fg
         )
         Text(text = "/天", fontSize = 9.5.sp, color = Muted)
+    }
+}
+
+@Composable
+private fun ExpiryPanel(items: List<Item>) {
+    // 临期排行：仅看剩余比例（已过期视为 0），比例相同再按剩余天数稳定排序
+    val ranked = items
+        .filter { it.expiryStatus != ExpiryStatus.NONE }
+        .sortedWith(
+            compareBy<Item> { it.remainingRatio }
+                .thenBy { it.daysToExpiry ?: Long.MAX_VALUE }
+        )
+        .take(10)
+    CardSurface(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(13.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "临期物品 TOP 10",
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Fg
+                )
+                Text(
+                    text = "按剩余比例",
+                    fontFamily = NumFamily,
+                    fontSize = 11.sp,
+                    color = Muted
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            if (ranked.isEmpty()) {
+                Text(
+                    text = "暂无数据",
+                    fontSize = 12.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(vertical = 20.dp)
+                )
+            } else {
+                ranked.forEachIndexed { index, item ->
+                    ExpiryRow(item, index + 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpiryRow(item: Item, rank: Int) {
+    val status = item.expiryStatus
+    val color = when (status) {
+        ExpiryStatus.EXPIRED -> Danger
+        ExpiryStatus.EXPIRING -> Warn
+        else -> Muted
+    }
+    val statusText = when (status) {
+        ExpiryStatus.EXPIRED -> "已过期 ${(-(item.daysToExpiry ?: 0L)).coerceAtLeast(0)} 天"
+        ExpiryStatus.EXPIRING, ExpiryStatus.NORMAL -> {
+            val pct = ((item.remainingRatio ?: 0.0) * 100).toInt()
+            "剩 ${item.daysToExpiry ?: 0} 天 · $pct%"
+        }
+        ExpiryStatus.NONE -> ""
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .background(
+                    if (rank == 1) Accent else Bg2,
+                    RoundedCornerShape(6.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$rank",
+                fontFamily = NumFamily,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (rank == 1) OnAccent else Muted
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = item.name,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Fg,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Bg2, RoundedCornerShape(50))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth((item.remainingRatio ?: 0.0).toFloat().coerceIn(0f, 1f))
+                        .height(4.dp)
+                        .background(color, RoundedCornerShape(50))
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = statusText,
+            fontFamily = NumFamily,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = color
+        )
     }
 }
