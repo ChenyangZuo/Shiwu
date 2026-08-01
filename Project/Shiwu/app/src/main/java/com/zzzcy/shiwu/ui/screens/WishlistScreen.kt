@@ -18,8 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ShoppingBag
-import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -46,6 +44,7 @@ import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.Wish
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
+import com.zzzcy.shiwu.ui.components.categoryIcon
 import com.zzzcy.shiwu.ui.components.OverviewCard
 import com.zzzcy.shiwu.ui.components.SectionHead
 import com.zzzcy.shiwu.ui.theme.Accent
@@ -175,10 +174,7 @@ private fun WishRow(
         "DREAM" -> Danger to Color(0xFF5C1F18)
         else -> Accent to Color(0xFF174739)
     }
-    val icon = when (wish.category) {
-        "影像" -> Icons.Outlined.Videocam
-        else -> Icons.Outlined.ShoppingBag
-    }
+    val icon = categoryIcon(wish.category)
     CardSurface(
         modifier = Modifier
             .fillMaxWidth()

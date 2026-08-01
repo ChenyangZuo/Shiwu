@@ -1,10 +1,12 @@
 package com.zzzcy.shiwu.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,12 +47,17 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import com.zzzcy.shiwu.data.ShiwuRepository
+import com.zzzcy.shiwu.data.Category
 import com.zzzcy.shiwu.ui.components.CardSurface
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
+import com.zzzcy.shiwu.ui.components.categoryIconKeys
+import com.zzzcy.shiwu.ui.components.iconForKey
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
 import com.zzzcy.shiwu.ui.theme.Bg2
+import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Danger
 import com.zzzcy.shiwu.ui.theme.Fg
 import com.zzzcy.shiwu.ui.theme.Muted
@@ -64,8 +71,10 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
     val categories by ShiwuRepository.categories.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var addInput by remember { mutableStateOf("") }
+    var addIcon by remember { mutableStateOf("shopping") }
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameInput by remember { mutableStateOf("") }
+    var renameIcon by remember { mutableStateOf("shopping") }
     var deleteTarget by remember { mutableStateOf<String?>(null) }
 
     Box(
@@ -113,7 +122,7 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 categories.forEach { category ->
-                    val usage = ShiwuRepository.categoryUsage(category)
+                    val usage = ShiwuRepository.categoryUsage(category.name)
                     CardSurface(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -125,18 +134,17 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
                                     .background(AccentSoft, RoundedCornerShape(9.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = category.take(1),
-                                    fontFamily = SerifFamily,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Accent
+                                Icon(
+                                    imageVector = iconForKey(category.icon),
+                                    contentDescription = null,
+                                    tint = Accent,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    text = category,
+                                    text = category.name,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Fg
@@ -156,8 +164,9 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        renameTarget = category
-                                        renameInput = category
+                                        renameTarget = category.name
+                                        renameInput = category.name
+                                        renameIcon = category.icon
                                     }
                                     .padding(10.dp)
                             )
@@ -168,7 +177,7 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { deleteTarget = category }
+                                    .clickable { deleteTarget = category.name }
                                     .padding(10.dp)
                             )
                         }
@@ -206,14 +215,19 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
         }
 
         if (showAdd) {
-            NameDialog(
+            CategoryDialog(
                 title = "新建分类",
                 value = addInput,
                 onValueChange = { addInput = it },
+                iconKey = addIcon,
+                onIconChange = { addIcon = it },
                 onConfirm = {
                     if (addInput.trim().isNotBlank()) {
-                        ShiwuRepository.addCategory(addInput.trim())
+                        val name = addInput.trim()
+                        ShiwuRepository.addCategory(name)
+                        ShiwuRepository.updateCategoryIcon(name, addIcon)
                         addInput = ""
+                        addIcon = "shopping"
                         showAdd = false
                     }
                 },
@@ -222,12 +236,16 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
         }
 
         renameTarget?.let { target ->
-            NameDialog(
+            CategoryDialog(
                 title = "重命名分类",
                 value = renameInput,
                 onValueChange = { renameInput = it },
+                iconKey = renameIcon,
+                onIconChange = { renameIcon = it },
                 onConfirm = {
-                    ShiwuRepository.renameCategory(target, renameInput)
+                    val newName = renameInput.trim()
+                    ShiwuRepository.renameCategory(target, newName)
+                    ShiwuRepository.updateCategoryIcon(newName, renameIcon)
                     renameTarget = null
                 },
                 onDismiss = { renameTarget = null }
@@ -263,10 +281,12 @@ fun CategoryManagementScreen(onClose: () -> Unit) {
 }
 
 @Composable
-private fun NameDialog(
+private fun CategoryDialog(
     title: String,
     value: String,
     onValueChange: (String) -> Unit,
+    iconKey: String,
+    onIconChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -274,17 +294,27 @@ private fun NameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            BasicTextField(
-                value = value,
-                onValueChange = { if (it.length <= 12) onValueChange(it) },
-                textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
-                cursorBrush = SolidColor(Accent),
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Bg2, RoundedCornerShape(8.dp))
-                    .padding(12.dp)
-            )
+            Column {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { if (it.length <= 12) onValueChange(it) },
+                    textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
+                    cursorBrush = SolidColor(Accent),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Bg2, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = "图标",
+                    fontSize = 11.sp,
+                    color = Muted
+                )
+                Spacer(Modifier.height(6.dp))
+                IconPicker(selected = iconKey, onSelect = onIconChange)
+            }
         },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text("确定", color = Accent) }
@@ -293,4 +323,37 @@ private fun NameDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IconPicker(selected: String, onSelect: (String) -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        categoryIconKeys.forEach { key ->
+            val active = key == selected
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (active) AccentSoft else Bg2)
+                    .border(
+                        width = if (active) 1.5.dp else 1.dp,
+                        color = if (active) Accent else Border,
+                        shape = RoundedCornerShape(9.dp)
+                    )
+                    .clickable { onSelect(key) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = iconForKey(key),
+                    contentDescription = null,
+                    tint = if (active) Accent else Muted,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+        }
+    }
 }

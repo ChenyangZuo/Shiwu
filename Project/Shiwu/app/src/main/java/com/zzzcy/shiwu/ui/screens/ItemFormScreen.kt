@@ -647,7 +647,8 @@ internal fun CategoryField(
         FieldLabel("分类", required = true)
         Spacer(Modifier.height(6.dp))
         val categories by ShiwuRepository.categories.collectAsState()
-        val chips = if (selected !in categories) categories + selected else categories
+        val names = categories.map { it.name }
+        val chips = if (selected !in names) names + selected else names
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)

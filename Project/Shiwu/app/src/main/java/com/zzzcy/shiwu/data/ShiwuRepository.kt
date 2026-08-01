@@ -40,7 +40,7 @@ object ShiwuRepository {
     val wishes: StateFlow<List<Wish>> = _wishes.asStateFlow()
     val lists: StateFlow<List<InventoryList>> = _lists.asStateFlow()
     val currentListId: StateFlow<Long> = _currentListId.asStateFlow()
-    val categories: StateFlow<List<String>> = _categories.asStateFlow()
+    val categories: StateFlow<List<Category>> = _categories.asStateFlow()
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
     private val _userName = MutableStateFlow("林川")
@@ -143,25 +143,34 @@ object ShiwuRepository {
 
     fun addCategory(name: String): Boolean = mutate {
         val trimmed = name.trim()
-        if (trimmed.isEmpty() || trimmed in _categories.value) return@mutate false
-        _categories.value += trimmed
+        if (trimmed.isEmpty() || _categories.value.any { it.name == trimmed }) return@mutate false
+        _categories.value += Category(trimmed, "shopping")
         true
     }
 
     fun renameCategory(oldName: String, newName: String) = mutate {
         val trimmed = newName.trim()
         if (trimmed.isEmpty() || trimmed == oldName) return@mutate
-        _categories.value = _categories.value.map { if (it == oldName) trimmed else it }
+        _categories.value = _categories.value.map { if (it.name == oldName) it.copy(name = trimmed) else it }
         _items.value = _items.value.map { if (it.category == oldName) it.copy(category = trimmed) else it }
         _wishes.value = _wishes.value.map { if (it.category == oldName) it.copy(category = trimmed) else it }
     }
 
+    /** 更新分类图标 */
+    fun updateCategoryIcon(name: String, icon: String) = mutate {
+        _categories.value = _categories.value.map { if (it.name == name) it.copy(icon = icon) else it }
+    }
+
     fun deleteCategory(name: String) = mutate {
-        val fallback = _categories.value.firstOrNull { it != name } ?: "其他"
-        _categories.value = _categories.value.filterNot { it == name }
+        val fallback = _categories.value.firstOrNull { it.name != name }?.name ?: "其他"
+        _categories.value = _categories.value.filterNot { it.name == name }
         _items.value = _items.value.map { if (it.category == name) it.copy(category = fallback) else it }
         _wishes.value = _wishes.value.map { if (it.category == name) it.copy(category = fallback) else it }
     }
+
+    /** 分类当前配置的图标 key（未配置回退默认映射） */
+    fun categoryIconKey(name: String): String =
+        _categories.value.firstOrNull { it.name == name }?.icon ?: defaultIconKeyForCategory(name)
 
     fun categoryUsage(name: String): Int =
         _items.value.count { it.category == name && !it.deleted } +
@@ -333,7 +342,7 @@ object ShiwuRepository {
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
             put("lists", JSONArray(_lists.value.map { it.toJson() }))
-            put("categories", JSONArray(_categories.value))
+            put("categories", JSONArray(_categories.value.map { it.toJson() }))
         }.toString(1)
     }
 
@@ -378,9 +387,18 @@ object ShiwuRepository {
         }
         val carr = root.optJSONArray("categories")
         if (carr != null) {
-            val merged = _categories.value.toMutableSet()
-            for (i in 0 until carr.length()) merged.add(carr.getString(i))
-            _categories.value = merged.toList()
+            val merged = _categories.value.toMutableList()
+            val existing = merged.map { it.name }.toMutableSet()
+            for (i in 0 until carr.length()) {
+                val el = carr.get(i)
+                val name = if (el is JSONObject) el.getString("name") else el.toString()
+                if (name.isNotBlank() && name !in existing) {
+                    val icon = if (el is JSONObject) el.optString("icon", "shopping") else defaultIconKeyForCategory(name)
+                    merged.add(Category(name, icon))
+                    existing.add(name)
+                }
+            }
+            _categories.value = merged
         }
         imported
     }
@@ -526,10 +544,20 @@ object ShiwuRepository {
                 items = ArrayList(items.map { if (lists.any { l -> l.id == it.listId }) it else it.copy(listId = firstId) })
                 wishes = ArrayList(wishes.map { if (lists.any { l -> l.id == it.listId }) it else it.copy(listId = firstId) })
             }
-            val categories = ArrayList<String>()
+            val categories = ArrayList<Category>()
             val carr = root.optJSONArray("categories")
             if (carr != null) {
-                for (i in 0 until carr.length()) categories.add(carr.getString(i))
+                for (i in 0 until carr.length()) {
+                    val el = carr.get(i)
+                    categories.add(
+                        if (el is JSONObject) {
+                            categoryFromJson(el)
+                        } else {
+                            val name = el.toString()
+                            Category(name, defaultIconKeyForCategory(name))
+                        }
+                    )
+                }
             }
             _lists.value = lists
             _items.value = items
@@ -549,7 +577,7 @@ object ShiwuRepository {
             put("items", JSONArray(_items.value.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
             put("lists", JSONArray(_lists.value.map { it.toJson() }))
-            put("categories", JSONArray(_categories.value))
+            put("categories", JSONArray(_categories.value.map { it.toJson() }))
         }
         f.writeText(root.toString(1))
     }
@@ -587,7 +615,5 @@ object ShiwuRepository {
     }
 
 }
-
-private val defaultCategories = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
 
 private fun LocalDate.yearMonth(): YearMonth = YearMonth.of(year, monthValue)

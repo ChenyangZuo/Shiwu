@@ -20,6 +20,39 @@ data class InventoryList(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+/** 分类（名称 + 展示图标 key） */
+data class Category(
+    val name: String,
+    val icon: String = "shopping"
+)
+
+/** 旧分类名 → 默认图标 key（兼容历史数据与未知分类） */
+fun defaultIconKeyForCategory(name: String): String = when (name) {
+    "数码" -> "devices"
+    "影像" -> "videocam"
+    "阅读" -> "menu_book"
+    "服饰" -> "checkroom"
+    "家居" -> "chair"
+    "收藏" -> "star"
+    "运动" -> "sports"
+    "美妆" -> "palette"
+    "食品" -> "restaurant"
+    "出行" -> "car"
+    "办公" -> "business"
+    else -> "shopping"
+}
+
+/** 默认分类（与第一版 MockData 一致） */
+val defaultCategories: List<Category> = listOf(
+    Category("数码", "devices"),
+    Category("服饰", "checkroom"),
+    Category("阅读", "menu_book"),
+    Category("家居", "chair"),
+    Category("收藏", "star"),
+    Category("影像", "videocam"),
+    Category("其他", "shopping")
+)
+
 /** 物品 */
 data class Item(
     val id: Long,
@@ -73,6 +106,16 @@ fun InventoryList.toJson(): JSONObject = JSONObject().apply {
     put("createdAt", createdAt)
     put("updatedAt", updatedAt)
 }
+
+fun Category.toJson(): JSONObject = JSONObject().apply {
+    put("name", name)
+    put("icon", icon)
+}
+
+fun categoryFromJson(o: JSONObject): Category = Category(
+    name = o.getString("name"),
+    icon = o.optString("icon", defaultIconKeyForCategory(o.optString("name", "")))
+)
 
 fun listFromJson(o: JSONObject): InventoryList = InventoryList(
     id = o.getLong("id"),

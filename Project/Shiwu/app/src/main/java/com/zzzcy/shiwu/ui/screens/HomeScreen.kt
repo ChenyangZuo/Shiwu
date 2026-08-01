@@ -51,6 +51,7 @@ import com.zzzcy.shiwu.data.Item
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.AppHeader
 import com.zzzcy.shiwu.ui.components.CardSurface
+import com.zzzcy.shiwu.ui.components.categoryIcon
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.components.OverviewCard
 import com.zzzcy.shiwu.ui.components.PillChip
@@ -295,19 +296,30 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
                         contentScale = ContentScale.Crop
                     )
                 }
-                Text(
-                    text = item.category,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = NumFamily,
-                    letterSpacing = 0.8.sp,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
                         .background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(50))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                    color = Color(0xFF1B1B19)
-                )
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                ) {
+                    Icon(
+                        imageVector = categoryIcon(item.category),
+                        contentDescription = null,
+                        tint = Color(0xFF1B1B19),
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = item.category,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = NumFamily,
+                        letterSpacing = 0.8.sp,
+                        color = Color(0xFF1B1B19)
+                    )
+                }
                 Text(
                     text = if (item.retired) "服役 ${item.serviceDays}天" else "${item.serviceDays}天",
                     fontSize = 10.sp,
