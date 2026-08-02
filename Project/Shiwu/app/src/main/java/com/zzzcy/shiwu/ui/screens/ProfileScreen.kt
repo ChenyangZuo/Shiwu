@@ -1,10 +1,12 @@
 package com.zzzcy.shiwu.ui.screens
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
@@ -32,12 +34,14 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,9 +52,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -76,8 +84,12 @@ import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.util.PhotoUtils
 import com.zzzcy.shiwu.util.TransferZip
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ProfileScreen(
@@ -88,10 +100,13 @@ fun ProfileScreen(
     onOpenTheme: () -> Unit
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val userName by ShiwuRepository.userName.collectAsState()
     val themeMode by ShiwuRepository.themeMode.collectAsState()
     var showEditName by remember { mutableStateOf(false) }
     var nameInput by remember { mutableStateOf("") }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
     val activeCount = items.count { !it.deleted }
     val trashCount = items.count { it.deleted }
     val wishCount = wishes.count { !it.purchased }
@@ -244,7 +259,14 @@ fun ProfileScreen(
                     MenuRowData(
                         "关于时物",
                         "v${appVersion()} · Made with care",
-                        Icons.Outlined.Info
+                        Icons.Outlined.Info,
+                        onClick = { showAboutDialog = true }
+                    ),
+                    MenuRowData(
+                        "分享时物",
+                        "扫码查看 GitHub 仓库",
+                        Icons.Outlined.Share,
+                        onClick = { showShareDialog = true }
                     )
                 )
             )
@@ -344,6 +366,95 @@ fun ProfileScreen(
             }
         )
     }
+
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("关于时物") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "「物有来处，时有所记。」",
+                        fontFamily = SerifFamily,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Accent
+                    )
+                    Text(
+                        text = "「时物」是一款本地优先的物品管理应用：记录物品的价格、购入与退役、保质期与日均成本，也收留那些尚未入手的愿望。数据留在设备本地，重要决定由你掌控。",
+                        fontSize = 12.sp,
+                        color = Fg,
+                        lineHeight = 18.sp
+                    )
+                    Text(
+                        text = "· 多清单：物品与心愿单按清单组织，一键切换\n" +
+                            "· 保质期守护：三选二自动推算，临期黄框、过期红框\n" +
+                            "· 心愿清单：记录优先级与攒钱进度，购买后一键转正\n" +
+                            "· 统计洞察：总价值、分类占比、日均成本、临期排行\n" +
+                            "· 数据自主：CSV / JSON 导入导出，照片随行\n" +
+                            "· 清单级保护：密码与指纹鉴权",
+                        fontSize = 12.sp,
+                        color = Muted,
+                        lineHeight = 19.sp
+                    )
+                    Text(
+                        text = "v${appVersion()} · Kotlin / Jetpack Compose / Room",
+                        fontSize = 11.sp,
+                        color = Muted2
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) { Text("知道了") }
+            }
+        )
+    }
+
+    if (showShareDialog) {
+        AlertDialog(
+            onDismissRequest = { showShareDialog = false },
+            title = { Text("分享时物") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val qr = ShareQrBitmap(GITHUB_URL, 512)
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .background(Color.White, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (qr != null) {
+                            Image(
+                                bitmap = qr,
+                                contentDescription = "GitHub 仓库二维码",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    Text(
+                        text = GITHUB_URL,
+                        fontSize = 11.sp,
+                        color = Muted,
+                        letterSpacing = 0.2.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(GITHUB_URL))
+                    Toast.makeText(context, "仓库链接已复制", Toast.LENGTH_SHORT).show()
+                }) { Text("复制链接") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showShareDialog = false }) { Text("关闭") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -387,6 +498,31 @@ private fun appVersion(): String {
             "0.1.0"
         }
     }
+}
+
+/** GitHub 仓库地址（分享二维码指向此处） */
+private const val GITHUB_URL = "https://github.com/ChenYangZuo/Shiwu"
+
+/** 在后台线程生成指向仓库的二维码位图 */
+@Composable
+private fun ShareQrBitmap(url: String, size: Int): ImageBitmap? {
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url) {
+        bitmap = withContext(Dispatchers.Default) {
+            try {
+                val matrix = QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, size, size)
+                val ink = 0xFF1B1B19.toInt()
+                val white = 0xFFFFFFFF.toInt()
+                val pixels = IntArray(size * size) { i ->
+                    if (matrix[i % size, i / size]) ink else white
+                }
+                Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888).asImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    return bitmap
 }
 
 @Composable
