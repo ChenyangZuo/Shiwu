@@ -1,8 +1,13 @@
+
 # 时物
 
 > 物有来处，时有所记。
 
 「时物」是一款本地优先的物品管理应用。它替你记住每件物品的价格、购入与退役、保质期与日均成本，也收留那些尚未入手的愿望。数据留在设备本地，重要决定都由你掌控。
+
+<p align="center">
+  <img src="Project/Shiwu/design/shiwu-icon_%E6%97%B6%E9%97%B4%E7%9B%92-%E5%9B%BE%E6%A0%87-%E5%9C%86%E8%A7%92.png" width="256" height="256" alt="时物图标" />
+</p>
 
 ## 特性
 
@@ -25,6 +30,7 @@ Project/Shiwu/app/src/main/java/com/zzzcy/shiwu/
 ├─ data/     # Room 实体、Repository 与领域模型
 ├─ ui/       # 页面与通用组件（Compose）
 └─ util/     # CSV、照片、导入导出等工具
+Project/Shiwu/design/   # 应用图标源文件（SVG 与圆角 PNG）
 docs/        # 需求理解与设计文档
 ```
 
