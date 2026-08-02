@@ -1,7 +1,6 @@
 package com.zzzcy.shiwu.ui.screens
 
 import android.content.Intent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,14 +29,12 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -55,6 +52,7 @@ import com.zzzcy.shiwu.ui.components.CardSurface
 import com.zzzcy.shiwu.ui.components.categoryIcon
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.components.OverviewCard
+import com.zzzcy.shiwu.ui.components.PhotoImage
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.RetiredFilter
 import com.zzzcy.shiwu.ui.components.SectionHead
@@ -69,7 +67,6 @@ import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
-import com.zzzcy.shiwu.util.PhotoUtils
 import com.zzzcy.shiwu.data.formatPrice
 
 @Composable
@@ -285,9 +282,7 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
     }
     CardSurface(modifier = cardModifier) {
         Column(Modifier.padding(8.dp)) {
-            val firstPhoto = remember(item.photos.firstOrNull()) {
-                item.photos.firstOrNull()?.let { PhotoUtils.decodeSampledBitmap(it, 640, 480)?.asImageBitmap() }
-            }
+            val firstPhotoPath = item.photos.firstOrNull()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -303,10 +298,11 @@ private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (firstPhoto != null) {
-                    Image(
-                        bitmap = firstPhoto,
-                        contentDescription = null,
+                if (firstPhotoPath != null) {
+                    PhotoImage(
+                        path = firstPhotoPath,
+                        targetWidth = 640,
+                        targetHeight = 480,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )

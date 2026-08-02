@@ -17,6 +17,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.zzzcy.shiwu.util.csvEscape
 import com.zzzcy.shiwu.util.parseCsv
+import com.zzzcy.shiwu.util.PhotoUtils
 import java.io.File
 import java.security.MessageDigest
 import java.time.LocalDate
@@ -100,6 +101,9 @@ object ShiwuRepository {
             scope.launch { db!!.wishDao().observeAll().collect { _wishes.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.listDao().observeAll().collect { _lists.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.categoryDao().observeAll().collect { _categories.value = it.map { e -> e.toModel() } } }
+
+            // 后台把「保存时压缩」上线前存的旧大图原地压缩，不阻塞启动
+            scope.launch { PhotoUtils.recompressExistingPhotos(context) }
 
             // 恢复上次使用的清单：已删除或已锁定的不回退展示，改选第一份未锁定清单；
             // 若全部清单都锁定，则指向无效 id（-1），界面不展示任何清单内容

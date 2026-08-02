@@ -30,18 +30,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // release 签名配置存在时，debug 包也使用同一签名，
+    // 便于 debug APK 覆盖安装到已装 release 的设备（无需卸载、保留数据）
+    val releaseSigning = if (keystoreProperties.isNotEmpty()) {
+        signingConfigs.create("release") {
+            storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+        }
+    } else {
+        null
+    }
+
     buildTypes {
+        debug {
+            signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
+        }
         release {
-            signingConfig = if (keystoreProperties.isNotEmpty()) {
-                signingConfigs.create("release") {
-                    storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
-                    storePassword = keystoreProperties.getProperty("storePassword")
-                    keyAlias = keystoreProperties.getProperty("keyAlias")
-                    keyPassword = keystoreProperties.getProperty("keyPassword")
-                }
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = releaseSigning ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

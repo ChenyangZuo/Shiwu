@@ -1,6 +1,5 @@
 package com.zzzcy.shiwu.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,7 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +51,7 @@ import com.zzzcy.shiwu.data.Item
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.formatDate
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
+import com.zzzcy.shiwu.ui.components.PhotoImage
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
 import com.zzzcy.shiwu.ui.theme.Bg2
@@ -66,7 +65,6 @@ import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.NumFamily
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Surface
-import com.zzzcy.shiwu.util.PhotoUtils
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -321,31 +319,21 @@ fun ItemDetailScreen(
 
 @Composable
 private fun PhotoStrip(photos: List<String>) {
-    Row(
+    val path = photos.firstOrNull() ?: return
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .height(240.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFEFEBE2))
     ) {
-        photos.take(1).forEach { path ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFEFEBE2))
-            ) {
-                val bitmap = remember(path) { PhotoUtils.decodeSampledBitmap(path, 1080, 360)?.asImageBitmap() }
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
-        }
+        PhotoImage(
+            path = path,
+            targetWidth = 1080,
+            targetHeight = 810,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 

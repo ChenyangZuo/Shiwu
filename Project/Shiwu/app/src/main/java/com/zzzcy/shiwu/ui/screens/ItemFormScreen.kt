@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,7 +55,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -69,6 +67,7 @@ import com.zzzcy.shiwu.data.Item
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.formatDate
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
+import com.zzzcy.shiwu.ui.components.PhotoImage
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.dashedBorder
 import com.zzzcy.shiwu.ui.theme.Accent
@@ -718,15 +717,13 @@ private fun PhotoField(
                         .clip(RoundedCornerShape(10.dp))
                         .background(Bg2)
                 ) {
-                    val bitmap = remember(path) { PhotoUtils.decodeSampledBitmap(path, 200, 200)?.asImageBitmap() }
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
+                    PhotoImage(
+                        path = path,
+                        targetWidth = 200,
+                        targetHeight = 200,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
