@@ -501,7 +501,7 @@ private fun appVersion(): String {
 }
 
 /** GitHub 仓库地址（分享二维码指向此处） */
-private const val GITHUB_URL = "https://github.com/ChenYangZuo/Shiwu"
+private const val GITHUB_URL = "https://github.com/ChenyangZuo/Shiwu"
 
 /** 在后台线程生成指向仓库的二维码位图 */
 @Composable
