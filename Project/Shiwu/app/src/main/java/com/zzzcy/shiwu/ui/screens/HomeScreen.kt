@@ -1,9 +1,12 @@
 package com.zzzcy.shiwu.ui.screens
 
 import android.content.Intent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,25 +26,33 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.Item
@@ -55,8 +66,8 @@ import com.zzzcy.shiwu.ui.components.OverviewCard
 import com.zzzcy.shiwu.ui.components.PhotoImage
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.RetiredFilter
-import com.zzzcy.shiwu.ui.components.SectionHead
 import com.zzzcy.shiwu.ui.theme.Accent
+import com.zzzcy.shiwu.ui.theme.AccentSoft
 import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Danger
@@ -69,6 +80,16 @@ import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.data.formatPrice
 
+/** 首页排序字段 */
+enum class ItemSortField(val label: String, val short: String) {
+    PURCHASE_DATE("购入时间", "购入"),
+    PRICE("价格", "价格"),
+    DAY_COST("日均成本", "日成本")
+}
+
+/** 首页排序（字段 + 方向，asc=true 表示升序） */
+data class ItemSort(val field: ItemSortField, val asc: Boolean)
+
 @Composable
 fun HomeScreen(
     items: List<Item>,
@@ -76,6 +97,10 @@ fun HomeScreen(
     onQueryChange: (String) -> Unit,
     retiredFilter: RetiredFilter,
     onFilterChange: (RetiredFilter) -> Unit,
+    categoryFilter: String?,
+    onCategoryFilterChange: (String?) -> Unit,
+    sort: ItemSort,
+    onSortChange: (ItemSort) -> Unit,
     listName: String,
     onListClick: () -> Unit,
     onItemClick: (Long) -> Unit,
@@ -83,9 +108,17 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val stats = ShiwuRepository.homeStats()
-    // 按购入时间倒序：最新购入的排前面，越早买的越靠后
-    val active = items.filter { !it.deleted }.sortedByDescending { it.purchaseDate }
+    val categories by ShiwuRepository.categories.collectAsState()
+    var showCategoryFilter by remember { mutableStateOf(false) }
+    var showSortDialog by remember { mutableStateOf(false) }
+    val sortRotation by animateFloatAsState(
+        targetValue = if (sort.asc) 180f else 0f,
+        animationSpec = tween(durationMillis = 250),
+        label = "sortDirection"
+    )
+    val active = items.filter { !it.deleted }
     val filtered = active.filter { item ->
+        val matchCategory = categoryFilter == null || item.category == categoryFilter
         val matchQuery = query.isBlank() ||
             item.name.contains(query.trim(), ignoreCase = true) ||
             item.category.contains(query.trim(), ignoreCase = true) ||
@@ -95,7 +128,17 @@ fun HomeScreen(
             RetiredFilter.ACTIVE -> !item.retired
             RetiredFilter.RETIRED -> item.retired
         }
-        matchQuery && matchRetired
+        matchCategory && matchQuery && matchRetired
+    }.let { list ->
+        val asc = sort.asc
+        when (sort.field) {
+            ItemSortField.PURCHASE_DATE ->
+                if (asc) list.sortedBy { it.purchaseDate } else list.sortedByDescending { it.purchaseDate }
+            ItemSortField.PRICE ->
+                if (asc) list.sortedBy { it.price } else list.sortedByDescending { it.price }
+            ItemSortField.DAY_COST ->
+                if (asc) list.sortedBy { it.dayCost } else list.sortedByDescending { it.dayCost }
+        }
     }
 
     LazyVerticalGrid(
@@ -159,16 +202,69 @@ fun HomeScreen(
         }
 
         item(span = { GridItemSpan(2) }) {
-            SectionHead(
-                title = "全部物品",
-                meta = buildAnnotatedString {
-                    append("共 ")
-                    withStyle(SpanStyle(fontFamily = NumFamily, fontWeight = FontWeight.SemiBold, color = Fg2)) {
-                        append("${filtered.size}")
-                    }
-                    append(" 件")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, end = 4.dp, top = 14.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showCategoryFilter = true }
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = categoryFilter ?: "全部物品",
+                        fontFamily = SerifFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        color = Fg
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Icon(
+                        imageVector = Icons.Outlined.ArrowDropDown,
+                        contentDescription = "按分类筛选",
+                        tint = Muted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-            )
+                Spacer(Modifier.weight(1f))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(AccentSoft, RoundedCornerShape(50))
+                        .clickable { showSortDialog = true }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = sort.field.label,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Accent
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(AccentSoft, RoundedCornerShape(50))
+                        .clickable { onSortChange(sort.copy(asc = !sort.asc)) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ArrowDownward,
+                        contentDescription = if (sort.asc) "升序" else "降序",
+                        tint = Accent,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer { rotationZ = sortRotation }
+                    )
+                }
+            }
         }
 
         if (filtered.isEmpty()) {
@@ -184,6 +280,86 @@ fun HomeScreen(
                         .clickable { onItemClick(item.id) }
                 )
             }
+        }
+    }
+
+    if (showCategoryFilter) {
+        AlertDialog(
+            onDismissRequest = { showCategoryFilter = false },
+            title = { Text("按分类筛选") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    FilterOptionRow("全部物品", active = categoryFilter == null) {
+                        onCategoryFilterChange(null)
+                        showCategoryFilter = false
+                    }
+                    categories.forEach { c ->
+                        FilterOptionRow(c.name, active = categoryFilter == c.name) {
+                            onCategoryFilterChange(c.name)
+                            showCategoryFilter = false
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCategoryFilter = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (showSortDialog) {
+        AlertDialog(
+            onDismissRequest = { showSortDialog = false },
+            title = { Text("排序字段") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    ItemSortField.entries.forEach { field ->
+                        FilterOptionRow(field.label, active = sort.field == field) {
+                            onSortChange(ItemSort(field, sort.asc))
+                            showSortDialog = false
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showSortDialog = false }) { Text("取消") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun FilterOptionRow(label: String, active: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = if (active) Accent else Fg,
+            modifier = Modifier.weight(1f)
+        )
+        if (active) {
+            Icon(
+                imageVector = Icons.Outlined.Check,
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }

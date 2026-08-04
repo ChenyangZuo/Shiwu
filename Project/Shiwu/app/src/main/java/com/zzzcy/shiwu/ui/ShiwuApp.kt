@@ -40,6 +40,8 @@ import com.zzzcy.shiwu.ui.screens.HomeScreen
 import com.zzzcy.shiwu.ui.screens.CategoryManagementScreen
 import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
+import com.zzzcy.shiwu.ui.screens.ItemSort
+import com.zzzcy.shiwu.ui.screens.ItemSortField
 import com.zzzcy.shiwu.ui.screens.LocationManagementScreen
 import com.zzzcy.shiwu.ui.screens.ListSwitcherScreen
 import com.zzzcy.shiwu.ui.screens.NicknameSetupScreen
@@ -66,6 +68,9 @@ fun ShiwuApp() {
     var currentTab by rememberSaveable { mutableStateOf(DockTab.HOME) }
     var query by rememberSaveable { mutableStateOf("") }
     var retiredFilter by rememberSaveable { mutableStateOf(RetiredFilter.ALL) }
+    var categoryFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var sortField by rememberSaveable { mutableStateOf(ItemSortField.PURCHASE_DATE) }
+    var sortAsc by rememberSaveable { mutableStateOf(false) }
     var detailItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var formKind by rememberSaveable { mutableStateOf<FormKind?>(null) }
     var editingItemId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -164,6 +169,13 @@ fun ShiwuApp() {
                         onQueryChange = { query = it },
                         retiredFilter = retiredFilter,
                         onFilterChange = { retiredFilter = it },
+                        categoryFilter = categoryFilter,
+                        onCategoryFilterChange = { categoryFilter = it },
+                        sort = ItemSort(sortField, sortAsc),
+                        onSortChange = {
+                            sortField = it.field
+                            sortAsc = it.asc
+                        },
                         listName = lists.firstOrNull { it.id == currentListId }?.name ?: "选择清单",
                         onListClick = { showListSwitcher = true },
                         onItemClick = { detailItemId = it },
