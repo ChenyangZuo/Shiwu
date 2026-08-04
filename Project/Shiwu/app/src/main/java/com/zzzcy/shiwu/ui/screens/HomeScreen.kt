@@ -269,11 +269,15 @@ private fun EmptyState(onAddClick: () -> Unit) {
 
 @Composable
 private fun ItemCard(item: Item, modifier: Modifier = Modifier) {
-    // 保质期高亮：临期（剩余不足 10%）黄框，已过期红框
-    val highlight = when (item.expiryStatus) {
-        ExpiryStatus.EXPIRED -> Danger
-        ExpiryStatus.EXPIRING -> Warn
-        else -> null
+    // 保质期高亮：临期（剩余不足 10%）黄框，已过期红框；已退役物品不再提示
+    val highlight = if (!item.retired) {
+        when (item.expiryStatus) {
+            ExpiryStatus.EXPIRED -> Danger
+            ExpiryStatus.EXPIRING -> Warn
+            else -> null
+        }
+    } else {
+        null
     }
     val cardModifier = if (highlight != null) {
         modifier.border(2.dp, highlight, RoundedCornerShape(14.dp))
