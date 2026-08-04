@@ -101,6 +101,7 @@ fun ItemFormScreen(
 
     var name by remember(editingItem?.id) { mutableStateOf(editingItem?.name ?: "") }
     var category by remember(editingItem?.id) { mutableStateOf(editingItem?.category ?: "数码") }
+    var location by remember(editingItem?.id) { mutableStateOf(editingItem?.location ?: "") }
     var priceText by remember(editingItem?.id) {
         mutableStateOf(if (editingItem != null && editingItem.price > 0) editingItem.price.toString() else "")
     }
@@ -120,6 +121,8 @@ fun ItemFormScreen(
     var showExpiryPicker by remember { mutableStateOf(false) }
     var showNewCategory by remember { mutableStateOf(false) }
     var newCategoryText by remember { mutableStateOf("") }
+    var showNewLocation by remember { mutableStateOf(false) }
+    var newLocationText by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -221,7 +224,8 @@ fun ItemFormScreen(
                         note = note.trim(),
                         productionDate = prod,
                         expiryDate = exp,
-                        shelfLifeDays = shelf
+                        shelfLifeDays = shelf,
+                        location = location.ifBlank { null }
                     )
                     onSaved(id)
                 } else {
@@ -235,7 +239,8 @@ fun ItemFormScreen(
                             note = note.trim(),
                             productionDate = prod,
                             expiryDate = exp,
-                            shelfLifeDays = shelf
+                            shelfLifeDays = shelf,
+                            location = location.ifBlank { null }
                         )
                     )
                     onSaved(editingItem.id)
@@ -316,6 +321,11 @@ fun ItemFormScreen(
                     selected = category,
                     onSelect = { category = it },
                     onCreateNew = { showNewCategory = true }
+                )
+                LocationField(
+                    selected = location,
+                    onSelect = { location = it },
+                    onCreateNew = { showNewLocation = true }
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(Modifier.weight(1f)) {
@@ -563,6 +573,41 @@ fun ItemFormScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showNewCategory = false }) { Text("取消") }
+                }
+            )
+        }
+
+        if (showNewLocation) {
+            AlertDialog(
+                onDismissRequest = { showNewLocation = false },
+                title = { Text("新建存放地点") },
+                text = {
+                    Column {
+                        BasicTextField(
+                            value = newLocationText,
+                            onValueChange = { newLocationText = it },
+                            textStyle = TextStyle(fontSize = 14.sp, color = Fg, lineHeight = 18.sp),
+                            cursorBrush = SolidColor(Accent),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Bg2, RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val trimmed = newLocationText.trim()
+                        if (trimmed.isNotBlank() && ShiwuRepository.addLocation(trimmed)) {
+                            location = trimmed
+                            newLocationText = ""
+                            showNewLocation = false
+                        }
+                    }) { Text("确定", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewLocation = false }) { Text("取消") }
                 }
             )
         }
@@ -829,6 +874,40 @@ internal fun CategoryField(
         ) {
             chips.forEach { chip ->
                 PillChip(chip, active = chip == selected) { onSelect(chip) }
+            }
+            PillChip("+ 新建", active = false, onClick = onCreateNew)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun LocationField(
+    selected: String,
+    onSelect: (String) -> Unit,
+    onCreateNew: () -> Unit
+) {
+    Column {
+        FieldLabel("存放地点")
+        Spacer(Modifier.height(6.dp))
+        val locations by ShiwuRepository.locations.collectAsState()
+        val names = locations
+        val chips = buildList {
+            add("未设置")
+            if (selected.isNotEmpty() && selected !in names) add(selected)
+            addAll(names)
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            chips.forEach { chip ->
+                PillChip(
+                    chip,
+                    active = chip == (selected.ifEmpty { "未设置" })
+                ) {
+                    onSelect(if (chip == "未设置") "" else chip)
+                }
             }
             PillChip("+ 新建", active = false, onClick = onCreateNew)
         }

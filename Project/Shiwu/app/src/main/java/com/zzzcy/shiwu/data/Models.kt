@@ -65,6 +65,9 @@ val defaultCategories: List<Category> = listOf(
     Category("其他", "shopping")
 )
 
+/** 预置存放地点（用户可在「我的」或物品编辑时自行增删） */
+val defaultLocations: List<String> = listOf("家", "车", "公司")
+
 /** 物品 */
 data class Item(
     val id: Long,
@@ -79,6 +82,7 @@ data class Item(
     val productionDate: Long? = null,   // 生产日期 epochDay（与保质期/到期日三选二）
     val expiryDate: Long? = null,       // 到期日期 epochDay
     val shelfLifeDays: Int? = null,     // 保质期天数
+    val location: String? = null,       // 存放地点
     val deleted: Boolean = false,
     val deletedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
@@ -169,6 +173,7 @@ fun Item.toJson(): JSONObject = JSONObject().apply {
     put("id", id)
     put("name", name)
     put("category", category)
+    put("location", location ?: JSONObject.NULL)
     put("price", price)
     put("purchaseDate", purchaseDate)
     put("photos", JSONArray(photos))
@@ -198,6 +203,7 @@ fun itemFromJson(o: JSONObject): Item {
         id = o.getLong("id"),
         name = o.getString("name"),
         category = o.optString("category", "其他"),
+        location = if (o.isNull("location")) null else o.optString("location").ifBlank { null },
         price = o.optDouble("price", 0.0),
         purchaseDate = o.optLong("purchaseDate", LocalDate.now().toEpochDay()),
         photos = photos,

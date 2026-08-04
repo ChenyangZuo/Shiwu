@@ -40,6 +40,7 @@ import com.zzzcy.shiwu.ui.screens.HomeScreen
 import com.zzzcy.shiwu.ui.screens.CategoryManagementScreen
 import com.zzzcy.shiwu.ui.screens.ItemDetailScreen
 import com.zzzcy.shiwu.ui.screens.ItemFormScreen
+import com.zzzcy.shiwu.ui.screens.LocationManagementScreen
 import com.zzzcy.shiwu.ui.screens.ListSwitcherScreen
 import com.zzzcy.shiwu.ui.screens.NicknameSetupScreen
 import com.zzzcy.shiwu.ui.screens.ProfileScreen
@@ -71,6 +72,7 @@ fun ShiwuApp() {
     var editingWishId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showCategories by rememberSaveable { mutableStateOf(false) }
+    var showLocations by rememberSaveable { mutableStateOf(false) }
     var showTheme by rememberSaveable { mutableStateOf(false) }
     var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
@@ -127,7 +129,7 @@ fun ShiwuApp() {
         // 首次昵称引导不可跳过
     }
     BackHandler(
-        enabled = formKind != null || detailItemId != null || showTrash || showCategories || showTheme || showListSwitcher
+        enabled = formKind != null || detailItemId != null || showTrash || showCategories || showLocations || showTheme || showListSwitcher
     ) {
         when {
             showListSwitcher -> showListSwitcher = false
@@ -135,6 +137,7 @@ fun ShiwuApp() {
             detailItemId != null -> detailItemId = null
             showTrash -> showTrash = false
             showCategories -> showCategories = false
+            showLocations -> showLocations = false
             showTheme -> showTheme = false
         }
     }
@@ -181,6 +184,7 @@ fun ShiwuApp() {
                         wishes = wishes,
                         onOpenTrash = { showTrash = true },
                         onOpenCategories = { showCategories = true },
+                        onOpenLocations = { showLocations = true },
                         onOpenTheme = { showTheme = true }
                     )
                 }
@@ -269,6 +273,21 @@ fun ShiwuApp() {
             ) + fadeOut(tween(durationMillis = 180))
         ) {
             CategoryManagementScreen(onClose = { showCategories = false })
+        }
+
+        // 存放地点管理
+        AnimatedVisibility(
+            visible = showLocations,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
+            LocationManagementScreen(onClose = { showLocations = false })
         }
 
         // 外观主题

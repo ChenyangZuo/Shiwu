@@ -149,6 +149,20 @@ fun ItemDetailScreen(
                         ,
                         color = ChipFg
                     )
+                    item.location?.takeIf { it.isNotBlank() }?.let { loc ->
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = loc,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = NumFamily,
+                            modifier = Modifier
+                                .background(ChipBg, RoundedCornerShape(50))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ,
+                            color = ChipFg
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
                     if (item.retired) {
                         Text(

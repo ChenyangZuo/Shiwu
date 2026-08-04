@@ -88,7 +88,8 @@ fun HomeScreen(
     val filtered = active.filter { item ->
         val matchQuery = query.isBlank() ||
             item.name.contains(query.trim(), ignoreCase = true) ||
-            item.category.contains(query.trim(), ignoreCase = true)
+            item.category.contains(query.trim(), ignoreCase = true) ||
+            item.location?.contains(query.trim(), ignoreCase = true) == true
         val matchRetired = when (retiredFilter) {
             RetiredFilter.ALL -> true
             RetiredFilter.ACTIVE -> !item.retired
@@ -217,7 +218,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
             if (query.isBlank()) {
                 Text(
-                    text = "搜索物品、品牌或标签",
+                    text = "搜索物品、分类或存放地点",
                     fontSize = 12.5.sp,
                     lineHeight = 16.sp,
                     color = Muted,

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.AlertDialog
@@ -97,6 +98,7 @@ fun ProfileScreen(
     wishes: List<Wish>,
     onOpenTrash: () -> Unit,
     onOpenCategories: () -> Unit,
+    onOpenLocations: () -> Unit,
     onOpenTheme: () -> Unit
 ) {
     val context = LocalContext.current
@@ -249,6 +251,12 @@ fun ProfileScreen(
                         "数码 / 服饰 / 阅读 / 家居 …",
                         Icons.Outlined.GridView,
                         onClick = onOpenCategories
+                    ),
+                    MenuRowData(
+                        "存放地点管理",
+                        "家 / 车 / 公司 …",
+                        Icons.Outlined.Place,
+                        onClick = onOpenLocations
                     ),
                     MenuRowData(
                         "外观主题",

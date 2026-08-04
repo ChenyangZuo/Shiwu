@@ -43,6 +43,7 @@ object ShiwuRepository {
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
     private val _lists = MutableStateFlow<List<InventoryList>>(emptyList())
     private val _categories = MutableStateFlow(defaultCategories)
+    private val _locations = MutableStateFlow(defaultLocations)
     private val _themeMode = MutableStateFlow("system")
     private val _currentListId = MutableStateFlow(1L)
     private val _userName = MutableStateFlow("林川")
@@ -53,6 +54,7 @@ object ShiwuRepository {
     val lists: StateFlow<List<InventoryList>> = _lists.asStateFlow()
     val currentListId: StateFlow<Long> = _currentListId.asStateFlow()
     val categories: StateFlow<List<Category>> = _categories.asStateFlow()
+    val locations: StateFlow<List<String>> = _locations.asStateFlow()
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
     val userName: StateFlow<String> = _userName.asStateFlow()
     val unlockedLists: StateFlow<Set<Long>> = _unlockedLists.asStateFlow()
@@ -95,12 +97,14 @@ object ShiwuRepository {
                 _wishes.value = db!!.wishDao().observeAll().first().map { it.toModel() }
                 _lists.value = db!!.listDao().observeAll().first().map { it.toModel() }
                 _categories.value = db!!.categoryDao().observeAll().first().map { it.toModel() }
+                _locations.value = db!!.locationDao().observeAll().first().map { it.name }
             }
 
             scope.launch { db!!.itemDao().observeAll().collect { _items.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.wishDao().observeAll().collect { _wishes.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.listDao().observeAll().collect { _lists.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.categoryDao().observeAll().collect { _categories.value = it.map { e -> e.toModel() } } }
+            scope.launch { db!!.locationDao().observeAll().collect { _locations.value = it.map { e -> e.name } } }
 
             // 后台把「保存时压缩」上线前存的旧大图原地压缩，不阻塞启动
             scope.launch { PhotoUtils.recompressExistingPhotos(context) }
@@ -132,6 +136,9 @@ object ShiwuRepository {
         }
         if (d.categoryDao().count() == 0L) {
             d.categoryDao().upsertAll(defaultCategories.map { it.toEntity() })
+        }
+        if (d.locationDao().count() == 0L) {
+            d.locationDao().upsertAll(defaultLocations.map { LocationEntity(it) })
         }
     }
 
@@ -362,6 +369,43 @@ object ShiwuRepository {
         _items.value.count { it.category == name && !it.deleted } +
             _wishes.value.count { it.category == name && !it.purchased }
 
+    // ---------- 存放地点管理 ----------
+
+    fun addLocation(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || _locations.value.any { it == trimmed }) return false
+        _locations.value += trimmed
+        scope.launch { db?.locationDao()?.upsert(LocationEntity(trimmed)) }
+        return true
+    }
+
+    fun renameLocation(oldName: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty() || trimmed == oldName) return
+        scope.launch {
+            val d = db ?: return@launch
+            val now = System.currentTimeMillis()
+            d.withTransaction {
+                d.locationDao().rename(oldName, trimmed)
+                d.itemDao().updateLocation(oldName, trimmed, now)
+            }
+        }
+    }
+
+    fun deleteLocation(name: String) {
+        scope.launch {
+            val d = db ?: return@launch
+            val now = System.currentTimeMillis()
+            d.withTransaction {
+                d.locationDao().delete(name)
+                d.itemDao().clearLocation(name, now)
+            }
+        }
+    }
+
+    fun locationUsage(name: String): Int =
+        _items.value.count { it.location == name && !it.deleted }
+
     // ---------- 查询 ----------
 
     fun activeItems(): List<Item> = _items.value.filter { !it.deleted }
@@ -385,7 +429,8 @@ object ShiwuRepository {
         note: String = "",
         productionDate: Long? = null,
         expiryDate: Long? = null,
-        shelfLifeDays: Int? = null
+        shelfLifeDays: Int? = null,
+        location: String? = null
     ): Long {
         val id = nextItemId++
         persistCounters()
@@ -394,6 +439,7 @@ object ShiwuRepository {
             productionDate = productionDate,
             expiryDate = expiryDate,
             shelfLifeDays = shelfLifeDays,
+            location = location,
             listId = _currentListId.value
         )
         scope.launch { db?.itemDao()?.upsert(item.toEntity()) }
@@ -567,6 +613,7 @@ object ShiwuRepository {
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
             put("lists", JSONArray(_lists.value.map { it.toJson() }))
             put("categories", JSONArray(_categories.value.map { it.toJson() }))
+            put("locations", JSONArray(_locations.value))
         }.toString(1)
     }
 
@@ -627,6 +674,25 @@ object ShiwuRepository {
                 }
             }
         }
+        val locationsToInsert = ArrayList<LocationEntity>()
+        val existingLocations = _locations.value.toMutableSet()
+        val larr2 = root.optJSONArray("locations")
+        if (larr2 != null) {
+            for (i in 0 until larr2.length()) {
+                val name = larr2.getString(i).trim()
+                if (name.isNotBlank() && name !in existingLocations) {
+                    locationsToInsert.add(LocationEntity(name))
+                    existingLocations.add(name)
+                }
+            }
+        }
+        // 兜底：备份中物品引用了未知地点时也自动补建，保证「我的-存放地点管理」可见
+        itemsToInsert.forEach { item ->
+            item.location?.takeIf { it.isNotBlank() && it !in existingLocations }?.let {
+                locationsToInsert.add(LocationEntity(it))
+                existingLocations.add(it)
+            }
+        }
         persistCounters()
         val imported = itemsToInsert.size + wishesToInsert.size
         scope.launch {
@@ -636,13 +702,14 @@ object ShiwuRepository {
                 if (itemsToInsert.isNotEmpty()) d.itemDao().upsertAll(itemsToInsert)
                 if (wishesToInsert.isNotEmpty()) d.wishDao().upsertAll(wishesToInsert)
                 if (categoriesToInsert.isNotEmpty()) d.categoryDao().upsertAll(categoriesToInsert)
+                if (locationsToInsert.isNotEmpty()) d.locationDao().upsertAll(locationsToInsert)
             }
         }
         return imported
     }
 
     /** CSV 表头（中文，与导入模板一致） */
-    val csvHeaders = listOf("名称", "分类", "价格", "购入日期", "备注", "状态", "退役日期", "照片文件名", "生产日期", "到期日期", "保质期（天）")
+    val csvHeaders = listOf("名称", "分类", "存放地点", "价格", "购入日期", "备注", "状态", "退役日期", "照片文件名", "生产日期", "到期日期", "保质期（天）")
 
     /** 导出物品清单为 CSV（纯文字；照片列记录文件名，照片本体随 ZIP 导出） */
     fun exportCsv(): String {
@@ -653,6 +720,7 @@ object ShiwuRepository {
                 listOf(
                     item.name,
                     item.category,
+                    item.location ?: "",
                     "%.2f".format(Locale.US, item.price),
                     LocalDate.ofEpochDay(item.purchaseDate).format(DateFmt),
                     item.note,
@@ -673,19 +741,19 @@ object ShiwuRepository {
         append(csvHeaders.joinToString(",") { csvEscape(it) }).append("\n")
         append(
             listOf(
-                "Sony WH-1000XM5 无线降噪耳机", "数码", "2899.00", "2025-06-15",
+                "Sony WH-1000XM5 无线降噪耳机", "数码", "家", "2899.00", "2025-06-15",
                 "通勤降噪耳机", "使用中", "", "", "2025-05-20", "", "1095"
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
         append(
             listOf(
-                "Kindle Paperwhite", "阅读", "998.00", "2024-03-01",
+                "Kindle Paperwhite", "阅读", "", "998.00", "2024-03-01",
                 "护眼阅读器", "已退役", "2025-01-20", "", "2023-12-01", "2025-12-01", ""
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
         append(
             listOf(
-                "客制化机械键盘", "数码", "899.00", "2025-12-01",
+                "客制化机械键盘", "数码", "公司", "899.00", "2025-12-01",
                 "", "使用中", "", "photo_123456.jpg", "", "2027-01-01", "730"
             ).joinToString(",") { csvEscape(it) }
         ).append("\n")
@@ -704,6 +772,8 @@ object ShiwuRepository {
         val itemsToInsert = ArrayList<ItemEntity>()
         val categoriesToInsert = ArrayList<CategoryEntity>()
         val existingCategories = _categories.value.map { it.name }.toMutableSet()
+        val locationsToInsert = ArrayList<LocationEntity>()
+        val existingLocations = _locations.value.toMutableSet()
         rows.drop(1).forEach { row ->
             fun col(name: String): String = idx[name]?.let { row.getOrNull(it)?.trim() ?: "" } ?: ""
             val name = col("名称")
@@ -742,10 +812,16 @@ object ShiwuRepository {
                 categoriesToInsert.add(Category(categoryName, defaultIconKeyForCategory(categoryName)).toEntity())
                 existingCategories.add(categoryName)
             }
+            val locationName = col("存放地点").ifBlank { null }
+            if (locationName != null && locationName !in existingLocations) {
+                locationsToInsert.add(LocationEntity(locationName))
+                existingLocations.add(locationName)
+            }
             val item = Item(
                 id = nextItemId++,
                 name = name,
                 category = categoryName,
+                location = locationName,
                 price = col("价格").toDoubleOrNull() ?: 0.0,
                 purchaseDate = runCatching { LocalDate.parse(col("购入日期")).toEpochDay() }
                     .getOrDefault(LocalDate.now().toEpochDay()),
@@ -767,6 +843,7 @@ object ShiwuRepository {
             val d = db ?: return@launch
             d.withTransaction {
                 if (categoriesToInsert.isNotEmpty()) d.categoryDao().upsertAll(categoriesToInsert)
+                if (locationsToInsert.isNotEmpty()) d.locationDao().upsertAll(locationsToInsert)
                 if (itemsToInsert.isNotEmpty()) d.itemDao().upsertAll(itemsToInsert)
             }
         }
