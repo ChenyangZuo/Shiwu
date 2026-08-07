@@ -1,5 +1,15 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.PixelCopy
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -17,6 +27,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,7 +51,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -48,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.zzzcy.shiwu.data.Item
 import com.zzzcy.shiwu.data.ExpiryStatus
 import com.zzzcy.shiwu.data.ShiwuRepository
@@ -58,6 +76,7 @@ import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.Accent2
 import com.zzzcy.shiwu.ui.theme.AccentSoft
+import com.zzzcy.shiwu.ui.theme.Bg
 import com.zzzcy.shiwu.ui.theme.Bg2
 import com.zzzcy.shiwu.ui.theme.Border
 import com.zzzcy.shiwu.ui.theme.Border2
@@ -71,6 +90,9 @@ import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.Surface
 import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.data.formatPrice
+import com.zzzcy.shiwu.util.PhotoUtils
+import java.io.File
+import kotlin.math.roundToInt
 
 private val chartColors: List<Color>
     @androidx.compose.runtime.Composable get() = listOf(Accent, Warn, Accent2, ChipFg, Border2)
@@ -78,49 +100,151 @@ private val chartColors: List<Color>
 @Composable
 fun StatsScreen(items: List<Item>) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    var statsWindowTop by remember { mutableStateOf(0f) }
+    var contentBottom by remember { mutableStateOf(0f) }
     var range by remember { mutableStateOf(6) } // 1=本月, 6=近半年, 12=全年
     val trend = remember(items, range) { ShiwuRepository.trendPoints(range) }
     val shares = remember(items) { ShiwuRepository.categoryShares() }
     val totalValue = items.filter { !it.deleted }.sumOf { it.price }
+    val bgColor = Bg
+    val fgColor = Fg
+    val navBottomDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Column(
+    fun saveAndShare(output: Bitmap) {
+        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+        val f = File(dir, "shiwu_stats_${System.currentTimeMillis()}.png")
+        f.outputStream().use { out -> output.compress(Bitmap.CompressFormat.PNG, 100, out) }
+        val uri = FileProvider.getUriForFile(context, PhotoUtils.FILE_PROVIDER_AUTHORITY, f)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "导出统计报表"))
+    }
+
+    /** 整窗截图 → 裁剪统计页可视区域（去掉状态栏与底部 Dock）→ 拼接 Slogan 条带 */
+    fun finishExport(source: Bitmap) {
+        val result = runCatching {
+            val navBottom = navBottomDp.value * density.density
+            // Dock：62dp 主体 + 12dp 底部间距 + 导航栏避让
+            val dockBlock = (74.dp.value * density.density + navBottom).toInt()
+            val top = statsWindowTop.roundToInt()
+            // 内容未铺满屏幕时，裁剪到最后一个组件底部，避免 Slogan 与内容间距过大
+            val viewportBottom = source.height - dockBlock
+            val naturalBottom = if (contentBottom > 0f) contentBottom.roundToInt() else viewportBottom
+            val bottom = minOf(viewportBottom, naturalBottom).coerceAtLeast(top + 1)
+            val captured = Bitmap.createBitmap(source, 0, top, source.width, bottom - top)
+
+            val stripHeight = (92.dp.value * density.density).toInt()
+            val output = Bitmap.createBitmap(
+                captured.width,
+                captured.height + stripHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(output)
+            canvas.drawColor(bgColor.toArgb())
+            canvas.drawBitmap(captured, 0f, 0f, null)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = fgColor.toArgb()
+                textAlign = Paint.Align.CENTER
+                textSize = 16.dp.value * density.density
+                typeface = Typeface.create("serif", Typeface.BOLD)
+            }
+            val cx = output.width / 2f
+            val baseline =
+                captured.height + stripHeight / 2f - (paint.ascent() + paint.descent()) / 2f
+            canvas.drawText("「物有来处，时有所记。」 — 时物", cx, baseline, paint)
+
+            saveAndShare(output)
+        }
+        if (result.isFailure) {
+            Log.e("ShiwuStats", "导出统计图片失败", result.exceptionOrNull())
+            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun exportStatsImage() {
+        val window = (context as? Activity)?.window
+        if (window == null) {
+            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val w = window.decorView.width
+        val h = window.decorView.height
+        if (w <= 0 || h <= 0) {
+            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val requestResult = runCatching {
+            PixelCopy.request(
+                window,
+                bitmap,
+                { copyResult ->
+                    if (copyResult == PixelCopy.SUCCESS) {
+                        finishExport(bitmap)
+                    } else {
+                        Log.e("ShiwuStats", "PixelCopy 失败: $copyResult")
+                        Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                Handler(Looper.getMainLooper())
+            )
+        }
+        if (requestResult.isFailure) {
+            Log.e("ShiwuStats", "PixelCopy 请求异常", requestResult.exceptionOrNull())
+            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .onGloballyPositioned { statsWindowTop = it.boundsInWindow().top }
     ) {
-        AppHeader(
-            eyebrow = "Stats",
-            title = "统计",
-            actions = listOf(
-                {
-                    HeaderIconButton(Icons.Outlined.FileUpload, "导出报表") {
-                        Toast.makeText(context, "该功能正在赶来的路上", Toast.LENGTH_SHORT).show()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            AppHeader(
+                eyebrow = "Stats",
+                title = "统计",
+                actions = listOf(
+                    {
+                        HeaderIconButton(Icons.Outlined.FileUpload, "导出报表", onClick = ::exportStatsImage)
                     }
-                }
+                )
             )
-        )
 
-        Column(Modifier.padding(horizontal = 18.dp)) {
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 18.dp)
+                    .onGloballyPositioned { contentBottom = it.boundsInWindow().bottom }
             ) {
-                PillChip("本月", active = range == 1) { range = 1 }
-                PillChip("近半年", active = range == 6) { range = 6 }
-                PillChip("全年", active = range == 12) { range = 12 }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PillChip("本月", active = range == 1) { range = 1 }
+                    PillChip("近半年", active = range == 6) { range = 6 }
+                    PillChip("全年", active = range == 12) { range = 12 }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TrendPanel(trend, totalValue)
+                    CategoryPanel(shares, items.count { !it.deleted })
+                    TopCostPanel(items.filter { !it.deleted })
+                    ExpiryPanel(items.filter { !it.deleted })
+                }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TrendPanel(trend, totalValue)
-                CategoryPanel(shares, items.count { !it.deleted })
-                TopCostPanel(items.filter { !it.deleted })
-                ExpiryPanel(items.filter { !it.deleted })
-            }
+            Spacer(Modifier.height(120.dp))
         }
-
-        Spacer(Modifier.height(120.dp))
     }
 }
 
