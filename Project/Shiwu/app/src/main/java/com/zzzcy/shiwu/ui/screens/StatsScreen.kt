@@ -1,15 +1,8 @@
 package com.zzzcy.shiwu.ui.screens
 
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.view.PixelCopy
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -27,9 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,16 +36,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -91,8 +78,11 @@ import com.zzzcy.shiwu.ui.theme.Surface
 import com.zzzcy.shiwu.ui.theme.Warn
 import com.zzzcy.shiwu.data.formatPrice
 import com.zzzcy.shiwu.util.PhotoUtils
+import com.zzzcy.shiwu.util.StatsReportRenderer
 import java.io.File
-import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val chartColors: List<Color>
     @androidx.compose.runtime.Composable get() = listOf(Accent, Warn, Accent2, ChipFg, Border2)
@@ -100,16 +90,11 @@ private val chartColors: List<Color>
 @Composable
 fun StatsScreen(items: List<Item>) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    var statsWindowTop by remember { mutableStateOf(0f) }
-    var contentBottom by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
     var range by remember { mutableStateOf(6) } // 1=本月, 6=近半年, 12=全年
     val trend = remember(items, range) { ShiwuRepository.trendPoints(range) }
     val shares = remember(items) { ShiwuRepository.categoryShares() }
     val totalValue = items.filter { !it.deleted }.sumOf { it.price }
-    val bgColor = Bg
-    val fgColor = Fg
-    val navBottomDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     fun saveAndShare(output: Bitmap) {
         val dir = File(context.cacheDir, "shared").apply { mkdirs() }
@@ -124,85 +109,47 @@ fun StatsScreen(items: List<Item>) {
         context.startActivity(Intent.createChooser(send, "导出统计报表"))
     }
 
-    /** 整窗截图 → 裁剪统计页可视区域（去掉状态栏与底部 Dock）→ 拼接 Slogan 条带 */
-    fun finishExport(source: Bitmap) {
-        val result = runCatching {
-            val navBottom = navBottomDp.value * density.density
-            // Dock：62dp 主体 + 12dp 底部间距 + 导航栏避让
-            val dockBlock = (74.dp.value * density.density + navBottom).toInt()
-            val top = statsWindowTop.roundToInt()
-            // 内容未铺满屏幕时，裁剪到最后一个组件底部，避免 Slogan 与内容间距过大
-            val viewportBottom = source.height - dockBlock
-            val naturalBottom = if (contentBottom > 0f) contentBottom.roundToInt() else viewportBottom
-            val bottom = minOf(viewportBottom, naturalBottom).coerceAtLeast(top + 1)
-            val captured = Bitmap.createBitmap(source, 0, top, source.width, bottom - top)
-
-            val stripHeight = (92.dp.value * density.density).toInt()
-            val output = Bitmap.createBitmap(
-                captured.width,
-                captured.height + stripHeight,
-                Bitmap.Config.ARGB_8888
-            )
-            val canvas = Canvas(output)
-            canvas.drawColor(bgColor.toArgb())
-            canvas.drawBitmap(captured, 0f, 0f, null)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = fgColor.toArgb()
-                textAlign = Paint.Align.CENTER
-                textSize = 16.dp.value * density.density
-                typeface = Typeface.create("serif", Typeface.BOLD)
-            }
-            val cx = output.width / 2f
-            val baseline =
-                captured.height + stripHeight / 2f - (paint.ascent() + paint.descent()) / 2f
-            canvas.drawText("「物有来处，时有所记。」 — 时物", cx, baseline, paint)
-
-            saveAndShare(output)
-        }
-        if (result.isFailure) {
-            Log.e("ShiwuStats", "导出统计图片失败", result.exceptionOrNull())
-            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     fun exportStatsImage() {
-        val window = (context as? Activity)?.window
-        if (window == null) {
-            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val w = window.decorView.width
-        val h = window.decorView.height
-        if (w <= 0 || h <= 0) {
-            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val requestResult = runCatching {
-            PixelCopy.request(
-                window,
-                bitmap,
-                { copyResult ->
-                    if (copyResult == PixelCopy.SUCCESS) {
-                        finishExport(bitmap)
-                    } else {
-                        Log.e("ShiwuStats", "PixelCopy 失败: $copyResult")
-                        Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                Handler(Looper.getMainLooper())
-            )
-        }
-        if (requestResult.isFailure) {
-            Log.e("ShiwuStats", "PixelCopy 请求异常", requestResult.exceptionOrNull())
-            Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            val result = runCatching {
+                val activeItems = items.filter { !it.deleted }
+                // 与统计页 ExpiryPanel 相同的排行口径：仅看剩余比例，同比例按剩余天数稳定排序
+                val expiryRanked = activeItems
+                    .filter { it.expiryStatus != ExpiryStatus.NONE }
+                    .sortedWith(
+                        compareBy<Item> { it.remainingRatio }
+                            .thenBy { it.daysToExpiry ?: Long.MAX_VALUE }
+                    )
+                    .take(10)
+                val bitmap = withContext(Dispatchers.Default) {
+                    StatsReportRenderer.render(
+                        listName = ShiwuRepository.listName(ShiwuRepository.currentListId.value),
+                        rangeLabel = when (range) {
+                            1 -> "本月"
+                            6 -> "近半年"
+                            else -> "全年"
+                        },
+                        exportedAt = System.currentTimeMillis(),
+                        trend = trend,
+                        totalValue = totalValue,
+                        shares = shares,
+                        itemCount = activeItems.size,
+                        topCosts = activeItems.sortedByDescending { it.dayCost }.take(3),
+                        expiryRanked = expiryRanked
+                    )
+                }
+                saveAndShare(bitmap)
+            }
+            if (result.isFailure) {
+                Log.e("ShiwuStats", "导出统计报表失败", result.exceptionOrNull())
+                Toast.makeText(context, "导出失败，请重试", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { statsWindowTop = it.boundsInWindow().top }
     ) {
         Column(
             modifier = Modifier
@@ -220,9 +167,7 @@ fun StatsScreen(items: List<Item>) {
             )
 
             Column(
-                modifier = Modifier
-                    .padding(horizontal = 18.dp)
-                    .onGloballyPositioned { contentBottom = it.boundsInWindow().bottom }
+                modifier = Modifier.padding(horizontal = 18.dp)
             ) {
                 Row(
                     modifier = Modifier
