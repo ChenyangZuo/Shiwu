@@ -148,7 +148,7 @@ object ShiwuRepository {
             val id = globalId(++listSeq)
             val now = System.currentTimeMillis()
             d.listDao().upsert(
-                ListEntity(id, "我的物品", now, now, 1, deviceId.toString(), false, null)
+                ListEntity(id, "我的物品", now, now, 1, deviceId.toString(), 0, false, null)
             )
             prefs?.edit()
                 ?.putLong("list_seq", listSeq)
@@ -1002,9 +1002,10 @@ object ShiwuRepository {
     suspend fun applySyncData(data: SyncData) {
         val d = db ?: return
         d.withTransaction {
-            if (data.lists.isNotEmpty()) d.listDao().upsertAll(data.lists.map { it.toEntity() })
-            if (data.items.isNotEmpty()) d.itemDao().upsertAll(data.items.map { it.toEntity() })
-            if (data.wishes.isNotEmpty()) d.wishDao().upsertAll(data.wishes.map { it.toEntity() })
+            // 写回时把 syncedRev 推进到合并后的 rev，避免下次同步误判为「本地修改」
+            if (data.lists.isNotEmpty()) d.listDao().upsertAll(data.lists.map { it.copy(syncedRev = it.rev).toEntity() })
+            if (data.items.isNotEmpty()) d.itemDao().upsertAll(data.items.map { it.copy(syncedRev = it.rev).toEntity() })
+            if (data.wishes.isNotEmpty()) d.wishDao().upsertAll(data.wishes.map { it.copy(syncedRev = it.rev).toEntity() })
             if (data.categories.isNotEmpty()) d.categoryDao().upsertAll(data.categories.map { it.toEntity() })
         }
     }

@@ -21,10 +21,11 @@ class MergeEngineTest {
         rev: Long,
         by: String,
         deleted: Boolean = false,
-        listId: Long = 1L
+        listId: Long = 1L,
+        syncedRev: Long = 0
     ) = Item(
         id = id, name = name, category = "数码", price = 1.0, purchaseDate = 0,
-        listId = listId, rev = rev, updatedBy = by, deleted = deleted
+        listId = listId, rev = rev, updatedBy = by, syncedRev = syncedRev, deleted = deleted
     )
 
     private fun wish(
@@ -32,10 +33,11 @@ class MergeEngineTest {
         name: String,
         rev: Long,
         by: String,
-        deleted: Boolean = false
+        deleted: Boolean = false,
+        syncedRev: Long = 0
     ) = Wish(
         id = id, name = name, category = "数码", price = 1.0,
-        listId = 1L, rev = rev, updatedBy = by, deleted = deleted
+        listId = 1L, rev = rev, updatedBy = by, syncedRev = syncedRev, deleted = deleted
     )
 
     private fun list(
@@ -43,9 +45,10 @@ class MergeEngineTest {
         name: String,
         rev: Long,
         by: String,
-        deleted: Boolean = false
+        deleted: Boolean = false,
+        syncedRev: Long = 0
     ) = InventoryList(
-        id = id, name = name, rev = rev, updatedBy = by, deleted = deleted
+        id = id, name = name, rev = rev, updatedBy = by, syncedRev = syncedRev, deleted = deleted
     )
 
     private fun merge(
@@ -125,6 +128,37 @@ class MergeEngineTest {
         val r = merge(local, remote)
         assertEquals(1, r.items.size)
         assertEquals(0, r.report.conflicts)
+    }
+
+    @Test
+    fun `本地未修改 → 采纳远端更新，不产生冲突副本`() {
+        // 本地 rev 1 且 syncedRev 1（上次同步过），远端已改到 rev 2
+        val local = SyncData(emptyList(), listOf(item(11, "耳机", 1, "A", syncedRev = 1)), emptyList(), emptyList())
+        val remote = SyncData(emptyList(), listOf(item(11, "耳机-远端改", 2, "B")), emptyList(), emptyList())
+        val r = merge(local, remote)
+        assertEquals("耳机-远端改", r.items.first { it.id == 11L }.name)
+        assertEquals(0, r.report.conflicts)
+        assertEquals(1, r.report.updated)
+    }
+
+    @Test
+    fun `本地修改、远端未变 → 本地胜，不产生副本`() {
+        val local = SyncData(emptyList(), listOf(item(11, "耳机-本地改", 2, "A", syncedRev = 1)), emptyList(), emptyList())
+        val remote = SyncData(emptyList(), listOf(item(11, "耳机", 1, "A")), emptyList(), emptyList())
+        val r = merge(local, remote)
+        assertEquals("耳机-本地改", r.items.first { it.id == 11L }.name)
+        assertEquals(0, r.report.conflicts)
+    }
+
+    @Test
+    fun `双方都在上次同步后修改且同 rev → 按 deviceId 决胜并产生副本`() {
+        val local = SyncData(emptyList(), listOf(item(11, "耳机-A", 2, "A", syncedRev = 1)), emptyList(), emptyList())
+        val remote = SyncData(emptyList(), listOf(item(11, "耳机-B", 2, "B")), emptyList(), emptyList())
+        val r = merge(local, remote)
+        // deviceId 字典序："A" < "B" → B 胜
+        assertEquals("耳机-B", r.items.first { it.id == 11L }.name)
+        assertEquals(1, r.report.conflicts)
+        assertEquals(1, r.items.count { it.name.contains("（冲突副本）") })
     }
 
     @Test

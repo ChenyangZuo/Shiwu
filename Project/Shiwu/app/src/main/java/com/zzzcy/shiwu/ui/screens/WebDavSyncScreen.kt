@@ -1,6 +1,7 @@
 package com.zzzcy.shiwu.ui.screens
 
 import android.content.pm.ApplicationInfo
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,6 +69,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun WebDavSyncScreen(onClose: () -> Unit) {
@@ -163,13 +166,18 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                                 busy = true
                                 scope.launch {
                                     val result = runCatching {
-                                        val c = WebDavClient(server, username, password)
-                                        c.mkcol(WebDavSyncManager.ROOT)
-                                        c.propfind(WebDavSyncManager.ROOT)
+                                        withContext(Dispatchers.IO) {
+                                            val c = WebDavClient(server, username, password)
+                                            c.mkcol(WebDavSyncManager.ROOT)
+                                            c.propfind(WebDavSyncManager.ROOT)
+                                        }
                                     }
                                     busy = false
                                     result.onSuccess { toast("连接成功") }
-                                        .onFailure { toast("连接失败：${it.message}") }
+                                        .onFailure {
+                                            Log.e("ShiwuSync", "测试连接失败", it)
+                                            toast("连接失败：${it.message}")
+                                        }
                                 }
                             }
                         }
@@ -215,6 +223,7 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                                         lastNotes = report.notes
                                         toast("同步完成：${report.summary()}")
                                     }.onFailure {
+                                        Log.e("ShiwuSync", "同步失败", it)
                                         error = it.message ?: "同步失败"
                                         toast("同步失败：${it.message}")
                                     }

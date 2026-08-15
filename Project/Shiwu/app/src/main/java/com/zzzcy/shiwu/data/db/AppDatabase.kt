@@ -38,7 +38,8 @@ data class ItemEntity(
     val updatedAt: Long,
     val listId: Long,
     val rev: Long,
-    val updatedBy: String
+    val updatedBy: String,
+    val syncedRev: Long
 )
 
 @Entity(tableName = "wishes")
@@ -57,6 +58,7 @@ data class WishEntity(
     val listId: Long,
     val rev: Long,
     val updatedBy: String,
+    val syncedRev: Long,
     val deleted: Boolean,
     val deletedAt: Long?
 )
@@ -69,6 +71,7 @@ data class ListEntity(
     val updatedAt: Long,
     val rev: Long,
     val updatedBy: String,
+    val syncedRev: Long,
     val deleted: Boolean,
     val deletedAt: Long?
 )
@@ -103,7 +106,7 @@ fun Item.toEntity() = ItemEntity(
     photos = photosToJson(photos), note = note, retired = retired, retirementDate = retirementDate,
     productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
     deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId,
-    rev = rev, updatedBy = updatedBy
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev
 )
 
 fun ItemEntity.toModel() = Item(
@@ -111,31 +114,31 @@ fun ItemEntity.toModel() = Item(
     photos = photosFromJson(photos), note = note, retired = retired, retirementDate = retirementDate,
     productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
     deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId,
-    rev = rev, updatedBy = updatedBy
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev
 )
 
 fun Wish.toEntity() = WishEntity(
     id = id, name = name, category = category, price = price, priority = priority,
     savedAmount = savedAmount, note = note, purchased = purchased, purchasedItemId = purchasedItemId,
     createdAt = createdAt, updatedAt = updatedAt, listId = listId,
-    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev, deleted = deleted, deletedAt = deletedAt
 )
 
 fun WishEntity.toModel() = Wish(
     id = id, name = name, category = category, price = price, priority = priority,
     savedAmount = savedAmount, note = note, purchased = purchased, purchasedItemId = purchasedItemId,
     createdAt = createdAt, updatedAt = updatedAt, listId = listId,
-    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev, deleted = deleted, deletedAt = deletedAt
 )
 
 fun InventoryList.toEntity() = ListEntity(
     id = id, name = name, createdAt = createdAt, updatedAt = updatedAt,
-    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev, deleted = deleted, deletedAt = deletedAt
 )
 
 fun ListEntity.toModel() = InventoryList(
     id = id, name = name, createdAt = createdAt, updatedAt = updatedAt,
-    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+    rev = rev, updatedBy = updatedBy, syncedRev = syncedRev, deleted = deleted, deletedAt = deletedAt
 )
 
 fun Category.toEntity() = CategoryEntity(name = name, icon = icon)
@@ -265,7 +268,7 @@ interface LocationDao {
 
 @Database(
     entities = [ItemEntity::class, WishEntity::class, ListEntity::class, CategoryEntity::class, LocationEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -278,7 +281,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "shiwu.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
 
         /** v1 → v2：items 表新增生产日期 / 到期日期 / 保质期天数（旧数据为空，视为无保质期信息） */
@@ -311,6 +314,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE lists ADD COLUMN updatedBy TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE lists ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE lists ADD COLUMN deletedAt INTEGER")
+            }
+        }
+
+        /** v4 → v5：items / wishes / lists 增加 syncedRev（记录上次同步到的版本，用于区分「落后」与「本地修改」） */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN syncedRev INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE wishes ADD COLUMN syncedRev INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE lists ADD COLUMN syncedRev INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

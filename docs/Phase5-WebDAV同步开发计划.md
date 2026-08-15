@@ -1,6 +1,6 @@
 # 时物 App · WebDAV 同步开发计划（feature/webdav-sync）
 
-> 状态：Phase A-C 已完成（单元测试通过）· 2026-08-15 · 分支 `feature/webdav-sync`
+> 状态：Phase A-C 已完成，模拟器端到端验证通过 · 2026-08-15 · 分支 `feature/webdav-sync`
 >
 > 设计依据：`docs/Phase4-WebDAV同步需求理解与设计.md`（已确认：全量快照 + 互斥锁 + 记录级 LWW + 冲突副本）
 
@@ -51,13 +51,15 @@
 
 - [x] JVM 单元测试：全局 ID 跨设备不碰撞、快照往返、合并引擎全部场景（双新增 / 双编辑 LWW / 编辑 vs 删除 / 双删 / 清单删除后孤儿物品 / 分类并集 / 冲突副本）—— 12 项全部通过
 - [x] `./gradlew test` + debug 构建通过
+- [x] 模拟器端到端：首次同步上传 60 件、远端修改被干净采纳（syncedRev 修复）、v4→v5 迁移、配置保存 / 测试连接
 - [ ] 真机演练（后续用户提供环境）：Phase4 文档第九节的 7 个场景
 
 ## 六、落地偏差记录
 
 - 冲突副本通过名称追加「（冲突副本）」标记，未新增 `conflictOf` 字段（v1 简化）；
 - 分类按名称并集合并，离线重命名不追源（v1 简化）；
-- `purgeItem`（回收站彻底删除）仍为硬删除，不产生墓碑（边缘场景，v1 接受）。
+- `purgeItem`（回收站彻底删除）仍为硬删除，不产生墓碑（边缘场景，v1 接受）；
+- 模拟器验证中发现并修复：① Android HttpURLConnection 拒绝 MKCOL/PROPFIND → WebDavClient 改为原生 Socket 实现；② 测试连接原先跑在主线程 → 移入 IO 线程；③ 合并引擎会把「单纯落后」误判为冲突 → 新增 `syncedRev`（v5）区分「本地未修改」与「双方都修改」。
 
 ## 四、合并规则（MergeEngine）
 

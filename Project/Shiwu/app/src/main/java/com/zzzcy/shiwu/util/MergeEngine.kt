@@ -8,8 +8,13 @@ import com.zzzcy.shiwu.data.SyncReport
 import com.zzzcy.shiwu.data.Wish
 
 /**
- * 合并引擎（纯 Kotlin，不依赖 Android）：本地 ∪ 远端，逐记录按 rev / updatedBy LWW，
- * 输方存为冲突副本；清单删除后仍活跃的物品归入默认清单。
+ * 合并引擎（纯 Kotlin，不依赖 Android）：
+ * - 仅一端有 → 采纳；
+ * - 双方一致 → 原样保留；
+ * - 本地未修改（rev <= syncedRev）→ 采纳远端（更新 / 删除），不产生冲突；
+ * - 远端未高于上次同步版本 → 本地修改胜，不产生冲突；
+ * - 双方都在上次同步后修改 → LWW（rev 大者胜，同 rev 比 deviceId），输方存为冲突副本；
+ * - 清单被删除但物品仍活跃 → 归入默认清单并记录。
  */
 object MergeEngine {
 
@@ -31,15 +36,15 @@ object MergeEngine {
         val listNotes = mutableListOf<String>()
         val itemNotes = mutableListOf<String>()
         val wishNotes = mutableListOf<String>()
-        val listStats = IntArray(3) // added / updated / deleted
+        val listStats = IntArray(3)
         val itemStats = IntArray(3)
         val wishStats = IntArray(3)
 
-        val lists = mergeLists(local.lists, remote.lists, newId, deviceId, listStats, listNotes)
-        val items = mergeItems(local.items, remote.items, newId, deviceId, itemStats, itemNotes)
-        val wishes = mergeWishes(local.wishes, remote.wishes, newId, deviceId, wishStats, wishNotes)
+        val lists = mergeLists(local.lists, remote.lists, newId, listStats, listNotes)
+        val items = mergeItems(local.items, remote.items, newId, itemStats, itemNotes)
+        val wishes = mergeWishes(local.wishes, remote.wishes, newId, wishStats, wishNotes)
 
-        // 孤儿物品归位：物品活跃但所在清单已在合并结果中被删除 → 归入默认清单
+        // 孤儿物品归位
         val activeListIds = lists.filter { !it.deleted }.map { it.id }.toSet()
         val fallbackId = if (defaultListId in activeListIds) defaultListId else activeListIds.firstOrNull()
         val finalItems = if (fallbackId == null) {
@@ -69,11 +74,42 @@ object MergeEngine {
         return MergeResult(lists, finalItems, wishes, mergedCategories.values.toList(), report)
     }
 
-    // ---------- 通用 LWW ----------
+    // ---------- 通用合并 ----------
 
-    /** 返回 (胜者, 败者)；完全相同返回 (record, null) */
-    private fun <T> lww(a: T, b: T, revOf: (T) -> Long, byOf: (T) -> String): Pair<T, T?> {
-        if (revOf(a) == revOf(b) && byOf(a) == byOf(b)) return a to null
+    private class MergeOutcome<T>(val record: T, val conflictCopy: T? = null)
+
+    private fun <T> mergeRecord(
+        local: T,
+        remote: T,
+        revOf: (T) -> Long,
+        byOf: (T) -> String,
+        syncedRevOf: (T) -> Long,
+        deletedOf: (T) -> Boolean,
+        conflictCopy: (loser: T, winner: T) -> T?
+    ): MergeOutcome<T> {
+        if (revOf(local) == revOf(remote) && byOf(local) == byOf(remote)) {
+            return MergeOutcome(local)
+        }
+        // 本地自上次同步后未修改 → 采纳远端
+        if (revOf(local) <= syncedRevOf(local)) {
+            return MergeOutcome(remote)
+        }
+        // 远端版本不高于我们上次同步到的版本 → 远端未变，本地修改胜
+        if (revOf(remote) <= syncedRevOf(local)) {
+            return MergeOutcome(local)
+        }
+        // 双方都在上次同步后修改 → 真冲突，LWW
+        val (winner, loser) = lww(local, remote, revOf, byOf)
+        val copy = when {
+            deletedOf(winner) && !deletedOf(loser) -> conflictCopy(loser, winner)
+            !deletedOf(winner) && deletedOf(loser) -> null
+            !deletedOf(winner) -> conflictCopy(loser, winner)
+            else -> null
+        }
+        return MergeOutcome(winner, copy)
+    }
+
+    private fun <T> lww(a: T, b: T, revOf: (T) -> Long, byOf: (T) -> String): Pair<T, T> {
         val cmp = compareValuesBy(a, b, revOf, byOf)
         return if (cmp >= 0) a to b else b to a
     }
@@ -84,7 +120,6 @@ object MergeEngine {
         local: List<InventoryList>,
         remote: List<InventoryList>,
         newId: () -> Long,
-        deviceId: String,
         stats: IntArray,
         notes: MutableList<String>
     ): List<InventoryList> {
@@ -104,25 +139,16 @@ object MergeEngine {
                     stats[0]++
                 }
                 else -> {
-                    val (winner, loser) = lww(l, r, { it.rev }, { it.updatedBy })
-                    if (loser == null) {
-                        result[id] = winner
-                    } else {
-                        stats[1]++
-                        if (winner.deleted && !loser.deleted) {
-                            // 删除胜：输方内容存为冲突副本
-                            val copy = listConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "清单「${loser.name}」的修改已保存为冲突副本"
-                        } else if (!winner.deleted && loser.deleted) {
-                            // 修改胜：删除失效
-                            result[id] = winner
-                        } else if (!winner.deleted) {
-                            val copy = listConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "清单「${loser.name}」的修改已保存为冲突副本"
-                        }
-                        result[id] = winner
+                    val outcome = mergeRecord(
+                        l, r,
+                        { it.rev }, { it.updatedBy }, { it.syncedRev }, { it.deleted },
+                        { loser, winner -> listConflictCopy(loser, newId(), winner.rev, winner.updatedBy) }
+                    )
+                    if (outcome.record !== l) stats[1]++
+                    result[id] = outcome.record
+                    outcome.conflictCopy?.let { copy ->
+                        result[copy.id] = copy
+                        notes += "清单「${copy.name}」的修改已保存为冲突副本"
                     }
                 }
             }
@@ -137,6 +163,7 @@ object MergeEngine {
             name = if (original.name.contains("（冲突副本）")) original.name else "${original.name}（冲突副本）",
             rev = winnerRev + 1,
             updatedBy = winnerBy,
+            syncedRev = winnerRev,
             deleted = false,
             deletedAt = null
         )
@@ -147,7 +174,6 @@ object MergeEngine {
         local: List<Item>,
         remote: List<Item>,
         newId: () -> Long,
-        deviceId: String,
         stats: IntArray,
         notes: MutableList<String>
     ): List<Item> {
@@ -167,23 +193,16 @@ object MergeEngine {
                     stats[0]++
                 }
                 else -> {
-                    val (winner, loser) = lww(l, r, { it.rev }, { it.updatedBy })
-                    if (loser == null) {
-                        result[id] = winner
-                    } else {
-                        stats[1]++
-                        if (winner.deleted && !loser.deleted) {
-                            val copy = itemConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "「${loser.name}」的修改已保存为冲突副本"
-                        } else if (!winner.deleted && loser.deleted) {
-                            // 修改胜：删除失效
-                        } else if (!winner.deleted) {
-                            val copy = itemConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "「${loser.name}」的修改已保存为冲突副本"
-                        }
-                        result[id] = winner
+                    val outcome = mergeRecord(
+                        l, r,
+                        { it.rev }, { it.updatedBy }, { it.syncedRev }, { it.deleted },
+                        { loser, winner -> itemConflictCopy(loser, newId(), winner.rev, winner.updatedBy) }
+                    )
+                    if (outcome.record !== l) stats[1]++
+                    result[id] = outcome.record
+                    outcome.conflictCopy?.let { copy ->
+                        result[copy.id] = copy
+                        notes += "「${copy.name}」的修改已保存为冲突副本"
                     }
                 }
             }
@@ -198,6 +217,7 @@ object MergeEngine {
             name = if (original.name.contains("（冲突副本）")) original.name else "${original.name}（冲突副本）",
             rev = winnerRev + 1,
             updatedBy = winnerBy,
+            syncedRev = winnerRev,
             deleted = false,
             deletedAt = null
         )
@@ -208,7 +228,6 @@ object MergeEngine {
         local: List<Wish>,
         remote: List<Wish>,
         newId: () -> Long,
-        deviceId: String,
         stats: IntArray,
         notes: MutableList<String>
     ): List<Wish> {
@@ -228,23 +247,16 @@ object MergeEngine {
                     stats[0]++
                 }
                 else -> {
-                    val (winner, loser) = lww(l, r, { it.rev }, { it.updatedBy })
-                    if (loser == null) {
-                        result[id] = winner
-                    } else {
-                        stats[1]++
-                        if (winner.deleted && !loser.deleted) {
-                            val copy = wishConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "心愿「${loser.name}」的修改已保存为冲突副本"
-                        } else if (!winner.deleted && loser.deleted) {
-                            // 修改胜：删除失效
-                        } else if (!winner.deleted) {
-                            val copy = wishConflictCopy(loser, newId(), winner.rev, winner.updatedBy)
-                            result[copy.id] = copy
-                            notes += "心愿「${loser.name}」的修改已保存为冲突副本"
-                        }
-                        result[id] = winner
+                    val outcome = mergeRecord(
+                        l, r,
+                        { it.rev }, { it.updatedBy }, { it.syncedRev }, { it.deleted },
+                        { loser, winner -> wishConflictCopy(loser, newId(), winner.rev, winner.updatedBy) }
+                    )
+                    if (outcome.record !== l) stats[1]++
+                    result[id] = outcome.record
+                    outcome.conflictCopy?.let { copy ->
+                        result[copy.id] = copy
+                        notes += "心愿「${copy.name}」的修改已保存为冲突副本"
                     }
                 }
             }
@@ -259,6 +271,7 @@ object MergeEngine {
             name = if (original.name.contains("（冲突副本）")) original.name else "${original.name}（冲突副本）",
             rev = winnerRev + 1,
             updatedBy = winnerBy,
+            syncedRev = winnerRev,
             deleted = false,
             deletedAt = null
         )
