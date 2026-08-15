@@ -36,7 +36,9 @@ data class ItemEntity(
     val deletedAt: Long?,
     val createdAt: Long,
     val updatedAt: Long,
-    val listId: Long
+    val listId: Long,
+    val rev: Long,
+    val updatedBy: String
 )
 
 @Entity(tableName = "wishes")
@@ -52,7 +54,11 @@ data class WishEntity(
     val purchasedItemId: Long?,
     val createdAt: Long,
     val updatedAt: Long,
-    val listId: Long
+    val listId: Long,
+    val rev: Long,
+    val updatedBy: String,
+    val deleted: Boolean,
+    val deletedAt: Long?
 )
 
 @Entity(tableName = "lists")
@@ -60,7 +66,11 @@ data class ListEntity(
     @PrimaryKey val id: Long,
     val name: String,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val rev: Long,
+    val updatedBy: String,
+    val deleted: Boolean,
+    val deletedAt: Long?
 )
 
 @Entity(tableName = "categories")
@@ -92,31 +102,41 @@ fun Item.toEntity() = ItemEntity(
     id = id, name = name, category = category, location = location, price = price, purchaseDate = purchaseDate,
     photos = photosToJson(photos), note = note, retired = retired, retirementDate = retirementDate,
     productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
-    deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId
+    deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId,
+    rev = rev, updatedBy = updatedBy
 )
 
 fun ItemEntity.toModel() = Item(
     id = id, name = name, category = category, location = location, price = price, purchaseDate = purchaseDate,
     photos = photosFromJson(photos), note = note, retired = retired, retirementDate = retirementDate,
     productionDate = productionDate, expiryDate = expiryDate, shelfLifeDays = shelfLifeDays,
-    deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId
+    deleted = deleted, deletedAt = deletedAt, createdAt = createdAt, updatedAt = updatedAt, listId = listId,
+    rev = rev, updatedBy = updatedBy
 )
 
 fun Wish.toEntity() = WishEntity(
     id = id, name = name, category = category, price = price, priority = priority,
     savedAmount = savedAmount, note = note, purchased = purchased, purchasedItemId = purchasedItemId,
-    createdAt = createdAt, updatedAt = updatedAt, listId = listId
+    createdAt = createdAt, updatedAt = updatedAt, listId = listId,
+    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
 )
 
 fun WishEntity.toModel() = Wish(
     id = id, name = name, category = category, price = price, priority = priority,
     savedAmount = savedAmount, note = note, purchased = purchased, purchasedItemId = purchasedItemId,
-    createdAt = createdAt, updatedAt = updatedAt, listId = listId
+    createdAt = createdAt, updatedAt = updatedAt, listId = listId,
+    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
 )
 
-fun InventoryList.toEntity() = ListEntity(id = id, name = name, createdAt = createdAt, updatedAt = updatedAt)
+fun InventoryList.toEntity() = ListEntity(
+    id = id, name = name, createdAt = createdAt, updatedAt = updatedAt,
+    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+)
 
-fun ListEntity.toModel() = InventoryList(id = id, name = name, createdAt = createdAt, updatedAt = updatedAt)
+fun ListEntity.toModel() = InventoryList(
+    id = id, name = name, createdAt = createdAt, updatedAt = updatedAt,
+    rev = rev, updatedBy = updatedBy, deleted = deleted, deletedAt = deletedAt
+)
 
 fun Category.toEntity() = CategoryEntity(name = name, icon = icon)
 
@@ -162,11 +182,14 @@ interface WishDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(wishes: List<WishEntity>)
 
-    @Query("DELETE FROM wishes WHERE id = :id")
-    suspend fun delete(id: Long)
+    @Query("UPDATE wishes SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE id = :id")
+    suspend fun softDelete(id: Long, now: Long)
 
-    @Query("DELETE FROM wishes WHERE listId = :listId")
-    suspend fun deleteByList(listId: Long)
+    @Query("UPDATE wishes SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE listId = :listId")
+    suspend fun softDeleteByList(listId: Long, now: Long)
+
+    @Query("DELETE FROM wishes WHERE id = :id")
+    suspend fun purge(id: Long)
 
     @Query("UPDATE wishes SET category = :newName, updatedAt = :now WHERE category = :oldName")
     suspend fun updateCategory(oldName: String, newName: String, now: Long)
@@ -183,8 +206,14 @@ interface ListDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(list: ListEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(lists: List<ListEntity>)
+
+    @Query("UPDATE lists SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE id = :id")
+    suspend fun softDelete(id: Long, now: Long)
+
     @Query("DELETE FROM lists WHERE id = :id")
-    suspend fun delete(id: Long)
+    suspend fun purge(id: Long)
 }
 
 @Dao
@@ -236,7 +265,7 @@ interface LocationDao {
 
 @Database(
     entities = [ItemEntity::class, WishEntity::class, ListEntity::class, CategoryEntity::class, LocationEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -249,7 +278,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "shiwu.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
 
         /** v1 → v2：items 表新增生产日期 / 到期日期 / 保质期天数（旧数据为空，视为无保质期信息） */
@@ -266,6 +295,22 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE items ADD COLUMN location TEXT")
                 db.execSQL("CREATE TABLE IF NOT EXISTS locations (name TEXT NOT NULL PRIMARY KEY)")
+            }
+        }
+
+        /** v3 → v4：items / wishes / lists 增加同步版本字段；wishes / lists 增加软删墓碑 */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN rev INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE items ADD COLUMN updatedBy TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE wishes ADD COLUMN rev INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE wishes ADD COLUMN updatedBy TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE wishes ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE wishes ADD COLUMN deletedAt INTEGER")
+                db.execSQL("ALTER TABLE lists ADD COLUMN rev INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE lists ADD COLUMN updatedBy TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE lists ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE lists ADD COLUMN deletedAt INTEGER")
             }
         }
     }

@@ -22,6 +22,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlin.random.Random
 import java.util.Locale
 
 /**
@@ -35,9 +36,10 @@ object ShiwuRepository {
     private var prefs: SharedPreferences? = null
     private var initialized = false
     private var firstLaunchDay: Long = LocalDate.now().toEpochDay()
-    private var nextItemId = 1L
-    private var nextWishId = 1L
-    private var nextListId = 1L
+    private var deviceId = 0L
+    private var itemSeq = 0L
+    private var wishSeq = 0L
+    private var listSeq = 0L
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
@@ -59,7 +61,14 @@ object ShiwuRepository {
     val userName: StateFlow<String> = _userName.asStateFlow()
     val unlockedLists: StateFlow<Set<Long>> = _unlockedLists.asStateFlow()
 
+    /** 当前设备标识（同步用） */
+    val syncDeviceId: String
+        get() = deviceId.toString()
+
     private var nicknameSet = false
+
+    /** 全局唯一 ID：高 23 位为设备号，低 40 位为本地自增序号 */
+    private fun globalId(seq: Long): Long = globalSyncId(deviceId, seq)
 
     /** 是否需要首次昵称设置（新装 App 首次启动时展示引导） */
     val needsNicknameSetup: Boolean
@@ -84,25 +93,35 @@ object ShiwuRepository {
                 firstLaunchDay = LocalDate.now().toEpochDay()
                 prefs?.edit()?.putLong("first_launch_day", firstLaunchDay)?.apply()
             }
-            nextItemId = prefs?.getLong("next_item_id", 1L) ?: 1L
-            nextWishId = prefs?.getLong("next_wish_id", 1L) ?: 1L
-            nextListId = prefs?.getLong("next_list_id", 1L) ?: 1L
+            deviceId = prefs?.getLong("device_id", 0L) ?: 0L
+            if (deviceId <= 0L) {
+                deviceId = (Random.nextLong() and 0x7FFFFF).coerceAtLeast(1L)
+                prefs?.edit()?.putLong("device_id", deviceId)?.apply()
+            }
+            itemSeq = prefs?.getLong("item_seq", 0L) ?: 0L
+            wishSeq = prefs?.getLong("wish_seq", 0L) ?: 0L
+            listSeq = prefs?.getLong("list_seq", 0L) ?: 0L
 
             // 旧的 JSON 存储不再使用（按确认不做数据迁移）
             File(context.filesDir, "shiwu_data.json").delete()
 
             runBlocking {
                 ensureDefaults()
+                migrateGlobalIdsIfNeeded()
                 _items.value = db!!.itemDao().observeAll().first().map { it.toModel() }
-                _wishes.value = db!!.wishDao().observeAll().first().map { it.toModel() }
-                _lists.value = db!!.listDao().observeAll().first().map { it.toModel() }
+                _wishes.value = db!!.wishDao().observeAll().first().map { it.toModel() }.filter { !it.deleted }
+                _lists.value = db!!.listDao().observeAll().first().map { it.toModel() }.filter { !it.deleted }
                 _categories.value = db!!.categoryDao().observeAll().first().map { it.toModel() }
                 _locations.value = db!!.locationDao().observeAll().first().map { it.name }
             }
 
             scope.launch { db!!.itemDao().observeAll().collect { _items.value = it.map { e -> e.toModel() } } }
-            scope.launch { db!!.wishDao().observeAll().collect { _wishes.value = it.map { e -> e.toModel() } } }
-            scope.launch { db!!.listDao().observeAll().collect { _lists.value = it.map { e -> e.toModel() } } }
+            scope.launch {
+                db!!.wishDao().observeAll().collect { _wishes.value = it.map { e -> e.toModel() }.filter { w -> !w.deleted } }
+            }
+            scope.launch {
+                db!!.listDao().observeAll().collect { _lists.value = it.map { e -> e.toModel() }.filter { l -> !l.deleted } }
+            }
             scope.launch { db!!.categoryDao().observeAll().collect { _categories.value = it.map { e -> e.toModel() } } }
             scope.launch { db!!.locationDao().observeAll().collect { _locations.value = it.map { e -> e.name } } }
 
@@ -126,11 +145,13 @@ object ShiwuRepository {
     private suspend fun ensureDefaults() {
         val d = db ?: return
         if (d.listDao().count() == 0L) {
-            val id = nextListId++
+            val id = globalId(++listSeq)
             val now = System.currentTimeMillis()
-            d.listDao().upsert(ListEntity(id, "我的物品", now, now))
+            d.listDao().upsert(
+                ListEntity(id, "我的物品", now, now, 1, deviceId.toString(), false, null)
+            )
             prefs?.edit()
-                ?.putLong("next_list_id", nextListId)
+                ?.putLong("list_seq", listSeq)
                 ?.putLong("current_list_id", id)
                 ?.apply()
         }
@@ -142,11 +163,61 @@ object ShiwuRepository {
         }
     }
 
+    /**
+     * 启用同步前的存量数据一次性迁移：把所有记录重新分配为全局唯一 ID，
+     * 并在同一事务内重写引用（items.listId / wishes.listId / wishes.purchasedItemId）。
+     */
+    private suspend fun migrateGlobalIdsIfNeeded() {
+        val d = db ?: return
+        val p = prefs ?: return
+        if (p.getBoolean("gid_migrated", false)) return
+        val listIdMap = HashMap<Long, Long>()
+        val itemIdMap = HashMap<Long, Long>()
+        d.withTransaction {
+            val oldLists = d.listDao().observeAll().first()
+            oldLists.forEach { l ->
+                val newId = globalId(++listSeq)
+                listIdMap[l.id] = newId
+                d.listDao().purge(l.id)
+                d.listDao().upsert(l.copy(id = newId, rev = 1, updatedBy = deviceId.toString()))
+            }
+            val oldItems = d.itemDao().observeAll().first()
+            oldItems.forEach { it ->
+                val newId = globalId(++itemSeq)
+                itemIdMap[it.id] = newId
+                val newList = listIdMap[it.listId] ?: listIdMap.values.firstOrNull() ?: 1L
+                d.itemDao().delete(it.id)
+                d.itemDao().upsert(it.copy(id = newId, listId = newList, rev = 1, updatedBy = deviceId.toString()))
+            }
+            val oldWishes = d.wishDao().observeAll().first()
+            oldWishes.forEach { w ->
+                val newId = globalId(++wishSeq)
+                val newList = listIdMap[w.listId] ?: listIdMap.values.firstOrNull() ?: 1L
+                val newPurchased = w.purchasedItemId?.let { itemIdMap[it] }
+                d.wishDao().purge(w.id)
+                d.wishDao().upsert(
+                    w.copy(id = newId, listId = newList, purchasedItemId = newPurchased, rev = 1, updatedBy = deviceId.toString())
+                )
+            }
+        }
+        val cur = p.getLong("current_list_id", -1L)
+        val mapped = listIdMap[cur] ?: listIdMap.values.firstOrNull()
+        p.edit()
+            .putBoolean("gid_migrated", true)
+            .putLong("item_seq", itemSeq)
+            .putLong("wish_seq", wishSeq)
+            .putLong("list_seq", listSeq)
+            .apply()
+        if (mapped != null) {
+            p.edit().putLong("current_list_id", mapped).apply()
+        }
+    }
+
     private fun persistCounters() {
         prefs?.edit()
-            ?.putLong("next_item_id", nextItemId)
-            ?.putLong("next_wish_id", nextWishId)
-            ?.putLong("next_list_id", nextListId)
+            ?.putLong("item_seq", itemSeq)
+            ?.putLong("wish_seq", wishSeq)
+            ?.putLong("list_seq", listSeq)
             ?.apply()
     }
 
@@ -168,9 +239,9 @@ object ShiwuRepository {
     fun listWishCount(listId: Long): Int = _wishes.value.count { it.listId == listId && !it.purchased }
 
     fun addList(name: String): Long {
-        val id = nextListId++
-        val list = InventoryList(id = id, name = name.trim().ifEmpty { "我的物品 $id" })
+        val id = globalId(++listSeq)
         persistCounters()
+        val list = InventoryList(id = id, name = name.trim().ifEmpty { "我的物品" }, rev = 1, updatedBy = syncDeviceId)
         scope.launch { db?.listDao()?.upsert(list.toEntity()) }
         return id
     }
@@ -179,8 +250,11 @@ object ShiwuRepository {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         val current = _lists.value.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
         scope.launch {
-            db?.listDao()?.upsert(current.copy(name = trimmed, updatedAt = System.currentTimeMillis()).toEntity())
+            db?.listDao()?.upsert(
+                current.copy(name = trimmed, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
+            )
         }
     }
 
@@ -192,10 +266,21 @@ object ShiwuRepository {
         scope.launch {
             val d = db ?: return@launch
             val now = System.currentTimeMillis()
+            val current = _lists.value.firstOrNull { it.id == id } ?: return@launch
             d.withTransaction {
-                d.itemDao().softDeleteByList(id, now)
-                d.wishDao().deleteByList(id)
-                d.listDao().delete(id)
+                _items.value.filter { it.listId == id }.forEach { item ->
+                    d.itemDao().upsert(
+                        item.copy(deleted = true, deletedAt = now, updatedAt = now, rev = item.rev + 1, updatedBy = syncDeviceId).toEntity()
+                    )
+                }
+                _wishes.value.filter { it.listId == id }.forEach { wish ->
+                    d.wishDao().upsert(
+                        wish.copy(deleted = true, deletedAt = now, updatedAt = now, rev = wish.rev + 1, updatedBy = syncDeviceId).toEntity()
+                    )
+                }
+                d.listDao().upsert(
+                    current.copy(deleted = true, deletedAt = now, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
+                )
             }
         }
         if (_currentListId.value == id) {
@@ -432,7 +517,7 @@ object ShiwuRepository {
         shelfLifeDays: Int? = null,
         location: String? = null
     ): Long {
-        val id = nextItemId++
+        val id = globalId(++itemSeq)
         persistCounters()
         val item = Item(
             id, name, category, price, purchaseDate, photos, note,
@@ -440,23 +525,29 @@ object ShiwuRepository {
             expiryDate = expiryDate,
             shelfLifeDays = shelfLifeDays,
             location = location,
-            listId = _currentListId.value
+            listId = _currentListId.value,
+            rev = 1,
+            updatedBy = syncDeviceId
         )
         scope.launch { db?.itemDao()?.upsert(item.toEntity()) }
         return id
     }
 
     fun updateItem(item: Item) {
+        val now = System.currentTimeMillis()
         scope.launch {
-            db?.itemDao()?.upsert(item.copy(updatedAt = System.currentTimeMillis()).toEntity())
+            db?.itemDao()?.upsert(
+                item.copy(updatedAt = now, rev = item.rev + 1, updatedBy = syncDeviceId).toEntity()
+            )
         }
     }
 
     fun retireItem(id: Long, date: Long) {
         _items.value.firstOrNull { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
             scope.launch {
                 db?.itemDao()?.upsert(
-                    current.copy(retired = true, retirementDate = date, updatedAt = System.currentTimeMillis()).toEntity()
+                    current.copy(retired = true, retirementDate = date, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
                 )
             }
         }
@@ -464,9 +555,10 @@ object ShiwuRepository {
 
     fun unretireItem(id: Long) {
         _items.value.firstOrNull { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
             scope.launch {
                 db?.itemDao()?.upsert(
-                    current.copy(retired = false, retirementDate = null, updatedAt = System.currentTimeMillis()).toEntity()
+                    current.copy(retired = false, retirementDate = null, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
                 )
             }
         }
@@ -474,9 +566,10 @@ object ShiwuRepository {
 
     fun softDeleteItem(id: Long) {
         _items.value.firstOrNull { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
             scope.launch {
                 db?.itemDao()?.upsert(
-                    current.copy(deleted = true, deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()).toEntity()
+                    current.copy(deleted = true, deletedAt = now, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
                 )
             }
         }
@@ -484,9 +577,10 @@ object ShiwuRepository {
 
     fun restoreItem(id: Long) {
         _items.value.firstOrNull { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
             scope.launch {
                 db?.itemDao()?.upsert(
-                    current.copy(deleted = false, deletedAt = null, updatedAt = System.currentTimeMillis()).toEntity()
+                    current.copy(deleted = false, deletedAt = null, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
                 )
             }
         }
@@ -506,37 +600,56 @@ object ShiwuRepository {
         savedAmount: Double,
         note: String
     ): Long {
-        val id = nextWishId++
+        val id = globalId(++wishSeq)
         persistCounters()
-        val wish = Wish(id, name, category, price, priority, savedAmount, note, listId = _currentListId.value)
+        val wish = Wish(
+            id, name, category, price, priority, savedAmount, note,
+            listId = _currentListId.value, rev = 1, updatedBy = syncDeviceId
+        )
         scope.launch { db?.wishDao()?.upsert(wish.toEntity()) }
         return id
     }
 
     fun updateWish(wish: Wish) {
+        val now = System.currentTimeMillis()
         scope.launch {
-            db?.wishDao()?.upsert(wish.copy(updatedAt = System.currentTimeMillis()).toEntity())
+            db?.wishDao()?.upsert(
+                wish.copy(updatedAt = now, rev = wish.rev + 1, updatedBy = syncDeviceId).toEntity()
+            )
         }
     }
 
     fun deleteWish(id: Long) {
-        scope.launch { db?.wishDao()?.delete(id) }
+        _wishes.value.firstOrNull { it.id == id }?.let { current ->
+            val now = System.currentTimeMillis()
+            scope.launch {
+                db?.wishDao()?.upsert(
+                    current.copy(deleted = true, deletedAt = now, updatedAt = now, rev = current.rev + 1, updatedBy = syncDeviceId).toEntity()
+                )
+            }
+        }
     }
 
     /** 标记心愿已购买：自动生成对应物品（同一清单） */
     fun markPurchased(wishId: Long): Long? {
         val wish = _wishes.value.firstOrNull { it.id == wishId } ?: return null
-        val itemId = nextItemId++
+        val itemId = globalId(++itemSeq)
         persistCounters()
+        val now = System.currentTimeMillis()
         val item = Item(
             id = itemId,
             name = wish.name,
             category = wish.category,
             price = wish.price,
             purchaseDate = LocalDate.now().toEpochDay(),
-            listId = wish.listId
+            listId = wish.listId,
+            rev = 1,
+            updatedBy = syncDeviceId
         )
-        val updatedWish = wish.copy(purchased = true, purchasedItemId = itemId)
+        val updatedWish = wish.copy(
+            purchased = true, purchasedItemId = itemId, updatedAt = now,
+            rev = wish.rev + 1, updatedBy = syncDeviceId
+        )
         scope.launch {
             val d = db ?: return@launch
             d.withTransaction {
@@ -627,8 +740,8 @@ object ShiwuRepository {
         if (larr != null && larr.length() > 0) {
             for (i in 0 until larr.length()) {
                 val l = listFromJson(larr.getJSONObject(i))
-                val newId = nextListId++
-                listsToInsert.add(l.copy(id = newId).toEntity())
+                val newId = globalId(++listSeq)
+                listsToInsert.add(l.copy(id = newId, rev = 1, updatedBy = syncDeviceId).toEntity())
                 listIdMap[l.id] = newId
             }
         }
@@ -639,10 +752,12 @@ object ShiwuRepository {
             val targetList = listIdMap[item.listId] ?: _currentListId.value
             itemsToInsert.add(
                 item.copy(
-                    id = nextItemId++,
+                    id = globalId(++itemSeq),
                     listId = targetList,
                     createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    rev = 1,
+                    updatedBy = syncDeviceId
                 ).toEntity()
             )
         }
@@ -653,10 +768,12 @@ object ShiwuRepository {
             val targetList = listIdMap[wish.listId] ?: _currentListId.value
             wishesToInsert.add(
                 wish.copy(
-                    id = nextWishId++,
+                    id = globalId(++wishSeq),
                     listId = targetList,
                     createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    rev = 1,
+                    updatedBy = syncDeviceId
                 ).toEntity()
             )
         }
@@ -818,7 +935,7 @@ object ShiwuRepository {
                 existingLocations.add(locationName)
             }
             val item = Item(
-                id = nextItemId++,
+                id = globalId(++itemSeq),
                 name = name,
                 category = categoryName,
                 location = locationName,
@@ -834,7 +951,9 @@ object ShiwuRepository {
                 shelfLifeDays = shelf,
                 createdAt = now,
                 updatedAt = now,
-                listId = _currentListId.value
+                listId = _currentListId.value,
+                rev = 1,
+                updatedBy = syncDeviceId
             )
             itemsToInsert.add(item.toEntity())
         }
@@ -857,6 +976,37 @@ object ShiwuRepository {
             .distinct()
             .mapNotNull { runCatching { File(it) }.getOrNull() }
             .filter { it.exists() && it.isFile }
+    }
+
+    // ---------- WebDAV 同步支持 ----------
+
+    /** 读取包含墓碑的完整数据（同步快照用） */
+    suspend fun loadSyncSnapshot(): SyncData {
+        val d = db ?: return SyncData(emptyList(), emptyList(), emptyList(), emptyList())
+        return SyncData(
+            lists = d.listDao().observeAll().first().map { it.toModel() },
+            items = d.itemDao().observeAll().first().map { it.toModel() },
+            wishes = d.wishDao().observeAll().first().map { it.toModel() },
+            categories = d.categoryDao().observeAll().first().map { it.toModel() }
+        )
+    }
+
+    /** 分配同步用新 ID（冲突副本等） */
+    fun allocSyncId(): Long {
+        val id = globalId(++itemSeq)
+        persistCounters()
+        return id
+    }
+
+    /** 把合并结果整体写回本地库（REPLACE），UI 流自动刷新 */
+    suspend fun applySyncData(data: SyncData) {
+        val d = db ?: return
+        d.withTransaction {
+            if (data.lists.isNotEmpty()) d.listDao().upsertAll(data.lists.map { it.toEntity() })
+            if (data.items.isNotEmpty()) d.itemDao().upsertAll(data.items.map { it.toEntity() })
+            if (data.wishes.isNotEmpty()) d.wishDao().upsertAll(data.wishes.map { it.toEntity() })
+            if (data.categories.isNotEmpty()) d.categoryDao().upsertAll(data.categories.map { it.toEntity() })
+        }
     }
 }
 

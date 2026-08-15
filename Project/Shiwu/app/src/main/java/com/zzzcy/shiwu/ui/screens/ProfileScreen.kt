@@ -99,6 +99,7 @@ fun ProfileScreen(
     onOpenTrash: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenLocations: () -> Unit,
+    onOpenSync: () -> Unit,
     onOpenTheme: () -> Unit
 ) {
     val context = LocalContext.current
@@ -257,6 +258,12 @@ fun ProfileScreen(
                         "家 / 车 / 公司 …",
                         Icons.Outlined.Place,
                         onClick = onOpenLocations
+                    ),
+                    MenuRowData(
+                        "WebDAV 同步",
+                        "局域网 NAS · 双向同步",
+                        Icons.Outlined.CloudSync,
+                        onClick = onOpenSync
                     ),
                     MenuRowData(
                         "外观主题",

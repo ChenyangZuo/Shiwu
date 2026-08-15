@@ -26,7 +26,11 @@ data class InventoryList(
     val id: Long,
     val name: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val rev: Long = 1,
+    val updatedBy: String = "",
+    val deleted: Boolean = false,
+    val deletedAt: Long? = null
 )
 
 /** 分类（名称 + 展示图标 key） */
@@ -87,7 +91,9 @@ data class Item(
     val deletedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val listId: Long = 1L
+    val listId: Long = 1L,
+    val rev: Long = 1,
+    val updatedBy: String = ""
 ) {
     /** 持有（服役）天数：退役后按购入→退役日计算 */
     val serviceDays: Long
@@ -140,7 +146,11 @@ data class Wish(
     val purchasedItemId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val listId: Long = 1L
+    val listId: Long = 1L,
+    val rev: Long = 1,
+    val updatedBy: String = "",
+    val deleted: Boolean = false,
+    val deletedAt: Long? = null
 )
 
 // ---------- JSON 序列化 ----------
@@ -150,6 +160,10 @@ fun InventoryList.toJson(): JSONObject = JSONObject().apply {
     put("name", name)
     put("createdAt", createdAt)
     put("updatedAt", updatedAt)
+    put("rev", rev)
+    put("updatedBy", updatedBy)
+    put("deleted", deleted)
+    put("deletedAt", deletedAt ?: JSONObject.NULL)
 }
 
 fun Category.toJson(): JSONObject = JSONObject().apply {
@@ -166,7 +180,11 @@ fun listFromJson(o: JSONObject): InventoryList = InventoryList(
     id = o.getLong("id"),
     name = o.getString("name"),
     createdAt = o.optLong("createdAt", System.currentTimeMillis()),
-    updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+    updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
+    rev = o.optLong("rev", 1),
+    updatedBy = o.optString("updatedBy", ""),
+    deleted = o.optBoolean("deleted", false),
+    deletedAt = if (o.isNull("deletedAt")) null else o.optLong("deletedAt")
 )
 
 fun Item.toJson(): JSONObject = JSONObject().apply {
@@ -188,6 +206,8 @@ fun Item.toJson(): JSONObject = JSONObject().apply {
     put("createdAt", createdAt)
     put("updatedAt", updatedAt)
     put("listId", listId)
+    put("rev", rev)
+    put("updatedBy", updatedBy)
 }
 
 fun itemFromJson(o: JSONObject): Item {
@@ -217,7 +237,9 @@ fun itemFromJson(o: JSONObject): Item {
         deletedAt = deletedAt,
         createdAt = o.optLong("createdAt", System.currentTimeMillis()),
         updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
-        listId = o.optLong("listId", 1L)
+        listId = o.optLong("listId", 1L),
+        rev = o.optLong("rev", 1),
+        updatedBy = o.optString("updatedBy", "")
     )
 }
 
@@ -234,6 +256,10 @@ fun Wish.toJson(): JSONObject = JSONObject().apply {
     put("createdAt", createdAt)
     put("updatedAt", updatedAt)
     put("listId", listId)
+    put("rev", rev)
+    put("updatedBy", updatedBy)
+    put("deleted", deleted)
+    put("deletedAt", deletedAt ?: JSONObject.NULL)
 }
 
 fun wishFromJson(o: JSONObject): Wish {
@@ -250,6 +276,10 @@ fun wishFromJson(o: JSONObject): Wish {
         purchasedItemId = purchasedItemId,
         createdAt = o.optLong("createdAt", System.currentTimeMillis()),
         updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
-        listId = o.optLong("listId", 1L)
+        listId = o.optLong("listId", 1L),
+        rev = o.optLong("rev", 1),
+        updatedBy = o.optString("updatedBy", ""),
+        deleted = o.optBoolean("deleted", false),
+        deletedAt = if (o.isNull("deletedAt")) null else o.optLong("deletedAt")
     )
 }

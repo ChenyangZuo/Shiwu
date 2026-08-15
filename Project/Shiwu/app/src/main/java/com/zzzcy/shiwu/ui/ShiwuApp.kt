@@ -49,6 +49,7 @@ import com.zzzcy.shiwu.ui.screens.ProfileScreen
 import com.zzzcy.shiwu.ui.screens.StatsScreen
 import com.zzzcy.shiwu.ui.screens.TrashScreen
 import com.zzzcy.shiwu.ui.screens.ThemeScreen
+import com.zzzcy.shiwu.ui.screens.WebDavSyncScreen
 import com.zzzcy.shiwu.ui.screens.WishFormScreen
 import com.zzzcy.shiwu.ui.screens.WishlistScreen
 import com.zzzcy.shiwu.ui.theme.Bg
@@ -78,6 +79,7 @@ fun ShiwuApp() {
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showCategories by rememberSaveable { mutableStateOf(false) }
     var showLocations by rememberSaveable { mutableStateOf(false) }
+    var showSync by rememberSaveable { mutableStateOf(false) }
     var showTheme by rememberSaveable { mutableStateOf(false) }
     var showListSwitcher by rememberSaveable { mutableStateOf(false) }
     var formDirect by rememberSaveable { mutableStateOf(false) }
@@ -134,7 +136,7 @@ fun ShiwuApp() {
         // 首次昵称引导不可跳过
     }
     BackHandler(
-        enabled = formKind != null || detailItemId != null || showTrash || showCategories || showLocations || showTheme || showListSwitcher
+        enabled = formKind != null || detailItemId != null || showTrash || showCategories || showLocations || showSync || showTheme || showListSwitcher
     ) {
         when {
             showListSwitcher -> showListSwitcher = false
@@ -143,6 +145,7 @@ fun ShiwuApp() {
             showTrash -> showTrash = false
             showCategories -> showCategories = false
             showLocations -> showLocations = false
+            showSync -> showSync = false
             showTheme -> showTheme = false
         }
     }
@@ -197,6 +200,7 @@ fun ShiwuApp() {
                         onOpenTrash = { showTrash = true },
                         onOpenCategories = { showCategories = true },
                         onOpenLocations = { showLocations = true },
+                        onOpenSync = { showSync = true },
                         onOpenTheme = { showTheme = true }
                     )
                 }
@@ -300,6 +304,21 @@ fun ShiwuApp() {
             ) + fadeOut(tween(durationMillis = 180))
         ) {
             LocationManagementScreen(onClose = { showLocations = false })
+        }
+
+        // WebDAV 同步
+        AnimatedVisibility(
+            visible = showSync,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                initialOffsetY = { it }
+            ) + fadeIn(tween(durationMillis = 200)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                targetOffsetY = { it }
+            ) + fadeOut(tween(durationMillis = 180))
+        ) {
+            WebDavSyncScreen(onClose = { showSync = false })
         }
 
         // 外观主题
