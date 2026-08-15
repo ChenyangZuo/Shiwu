@@ -1,5 +1,6 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
@@ -44,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,6 +91,19 @@ fun ItemDetailScreen(
     }
     var showRetirePicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var moveTarget by remember { mutableStateOf<Long?>(null) }
+    val lists by ShiwuRepository.lists.collectAsState()
+    val context = LocalContext.current
+
+    fun doMove(targetId: Long) {
+        if (ShiwuRepository.moveItemToList(item.id, targetId)) {
+            Toast.makeText(context, "已移动到「${ShiwuRepository.listName(targetId)}」", Toast.LENGTH_SHORT).show()
+            onBack()
+        } else {
+            Toast.makeText(context, "移动失败", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -250,6 +268,33 @@ fun ItemDetailScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(46.dp)
+                        .background(AccentSoft, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { showMoveDialog = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.DriveFileMove,
+                            contentDescription = null,
+                            tint = Accent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "移动清单",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Accent
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
                         .border(1.5.dp, Danger, RoundedCornerShape(14.dp))
                         .clickable { showDeleteConfirm = true },
                     contentAlignment = Alignment.Center
@@ -327,6 +372,86 @@ fun ItemDetailScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                }
+            )
+        }
+
+        if (showMoveDialog) {
+            AlertDialog(
+                onDismissRequest = { showMoveDialog = false },
+                title = { Text("移动到清单") },
+                text = {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        lists.filter { it.id != item.listId }.forEach { list ->
+                            val locked = ShiwuRepository.isListLocked(list.id)
+                            val unlocked = ShiwuRepository.isListUnlocked(list.id)
+                            val selectable = !locked || unlocked
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        when {
+                                            locked && !unlocked ->
+                                                Toast.makeText(context, "该清单已加密，请先解锁后再移动", Toast.LENGTH_SHORT).show()
+                                            locked -> {
+                                                moveTarget = list.id
+                                                showMoveDialog = false
+                                            }
+                                            else -> {
+                                                doMove(list.id)
+                                                showMoveDialog = false
+                                            }
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = list.name,
+                                    fontSize = 14.sp,
+                                    color = if (selectable) Fg else Muted,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (locked) {
+                                    Icon(
+                                        imageVector = if (unlocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                                        contentDescription = if (unlocked) "已解锁" else "已加密",
+                                        tint = if (unlocked) Accent else Muted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showMoveDialog = false }) { Text("取消") }
+                }
+            )
+        }
+
+        moveTarget?.let { targetId ->
+            AlertDialog(
+                onDismissRequest = { moveTarget = null },
+                title = { Text("移动到加密清单") },
+                text = {
+                    Text(
+                        "目标清单「${ShiwuRepository.listName(targetId)}」已开启保护，移动后需要解锁才能查看。确定移动吗？"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        doMove(targetId)
+                        moveTarget = null
+                    }) { Text("移动", color = Accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { moveTarget = null }) { Text("取消") }
                 }
             )
         }

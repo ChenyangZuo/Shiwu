@@ -586,6 +586,24 @@ object ShiwuRepository {
         }
     }
 
+    /**
+     * 把物品移动到另一清单（同步按普通更新传播）。
+     * 目标清单加密且未解锁时拒绝移动；源清单必须已解锁（能查看详情即已解锁）。
+     */
+    fun moveItemToList(itemId: Long, targetListId: Long): Boolean {
+        val item = _items.value.firstOrNull { it.id == itemId } ?: return false
+        if (item.listId == targetListId) return false
+        if (_lists.value.none { it.id == targetListId }) return false
+        if (isListLocked(targetListId) && !isListUnlocked(targetListId)) return false
+        val now = System.currentTimeMillis()
+        scope.launch {
+            db?.itemDao()?.upsert(
+                item.copy(listId = targetListId, updatedAt = now, rev = item.rev + 1, updatedBy = syncDeviceId).toEntity()
+            )
+        }
+        return true
+    }
+
     fun purgeItem(id: Long) {
         scope.launch { db?.itemDao()?.delete(id) }
     }
