@@ -1,5 +1,6 @@
 package com.zzzcy.shiwu.ui.screens
 
+import android.content.pm.ApplicationInfo
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.SyncConfigStore
+import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.WebDavSyncManager
 import com.zzzcy.shiwu.ui.components.CardSurface
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
@@ -71,6 +73,7 @@ import kotlinx.coroutines.launch
 fun WebDavSyncScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isDebug = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     val saved = remember { SyncConfigStore.load(context) }
     var server by remember { mutableStateOf(saved?.server ?: "") }
     var username by remember { mutableStateOf(saved?.username ?: "") }
@@ -242,6 +245,34 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                             )
                             lastNotes.forEach { note ->
                                 Text(text = "· $note", fontSize = 10.5.sp, color = Muted)
+                            }
+                        }
+                    }
+                }
+
+                if (isDebug) {
+                    CardSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "测试数据（仅调试版）",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Fg
+                            )
+                            Text(
+                                text = "批量生成物品 / 心愿，方便演练同步合并；不含照片。",
+                                fontSize = 11.sp,
+                                color = Muted
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ActionButton("生成 30 件物品", accent = true, enabled = !busy) {
+                                    ShiwuRepository.generateTestData(30, 0)
+                                    toast("已生成 30 件物品")
+                                }
+                                ActionButton("生成 15 件心愿", accent = false, enabled = !busy) {
+                                    ShiwuRepository.generateTestData(0, 15)
+                                    toast("已生成 15 件心愿")
+                                }
                             }
                         }
                     }

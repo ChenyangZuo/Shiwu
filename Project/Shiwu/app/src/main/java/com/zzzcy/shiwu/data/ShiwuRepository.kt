@@ -1008,6 +1008,58 @@ object ShiwuRepository {
             if (data.categories.isNotEmpty()) d.categoryDao().upsertAll(data.categories.map { it.toEntity() })
         }
     }
+
+    /** 批量生成测试数据（仅调试用）：在当前清单创建物品 / 心愿，用于同步演练 */
+    fun generateTestData(itemCount: Int, wishCount: Int) {
+        val listId = _currentListId.value
+        val names = listOf(
+            "降噪耳机", "机械键盘", "保温杯", "台灯", "雨伞", "背包", "充电宝", "鼠标", "显示器",
+            "笔记本支架", "咖啡壶", "香薰机", "路由器", "摄像头", "音箱", "游戏手柄", "瑜伽垫",
+            "跑鞋", "卫衣", "围巾"
+        )
+        val cats = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
+        val locs = listOf("家", "车", "公司", null)
+        val now = System.currentTimeMillis()
+        val newItems = (0 until itemCount).map { i ->
+            Item(
+                id = globalId(++itemSeq),
+                name = "${names[i % names.size]} #${i + 1}",
+                category = cats[i % cats.size],
+                price = (50 + (i * 37) % 3000) / 10.0,
+                purchaseDate = LocalDate.now().minusDays((i % 365).toLong()).toEpochDay(),
+                location = locs[i % locs.size],
+                note = "测试数据",
+                listId = listId,
+                rev = 1,
+                updatedBy = syncDeviceId,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        val newWishes = (0 until wishCount).map { i ->
+            Wish(
+                id = globalId(++wishSeq),
+                name = "心愿 ${names[i % names.size]} #${i + 1}",
+                category = cats[i % cats.size],
+                price = (200 + (i * 53) % 5000) / 10.0,
+                priority = listOf("HIGH", "MEDIUM", "DREAM")[i % 3],
+                note = "测试数据",
+                listId = listId,
+                rev = 1,
+                updatedBy = syncDeviceId,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        persistCounters()
+        scope.launch {
+            val d = db ?: return@launch
+            d.withTransaction {
+                if (newItems.isNotEmpty()) d.itemDao().upsertAll(newItems.map { it.toEntity() })
+                if (newWishes.isNotEmpty()) d.wishDao().upsertAll(newWishes.map { it.toEntity() })
+            }
+        }
+    }
 }
 
 private fun LocalDate.yearMonth(): YearMonth = YearMonth.of(year, monthValue)
