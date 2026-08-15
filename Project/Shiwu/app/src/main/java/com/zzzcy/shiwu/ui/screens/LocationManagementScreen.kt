@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.ui.components.CardSurface
+import com.zzzcy.shiwu.ui.components.consumeOverlayTaps
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
@@ -72,6 +73,7 @@ fun LocationManagementScreen(onClose: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .consumeOverlayTaps()
             .shadow(18.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = Color(0x33000000))
             .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             .background(Surface, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))

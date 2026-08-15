@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,7 @@ import com.zzzcy.shiwu.data.SyncConfigStore
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.WebDavSyncManager
 import com.zzzcy.shiwu.ui.components.CardSurface
+import com.zzzcy.shiwu.ui.components.consumeOverlayTaps
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
 import com.zzzcy.shiwu.ui.theme.Accent
 import com.zzzcy.shiwu.ui.theme.AccentSoft
@@ -92,6 +95,7 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .consumeOverlayTaps()
             .shadow(18.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = Color(0x33000000))
             .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             .background(Surface, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
@@ -325,6 +329,9 @@ private fun SyncField(
                     onValueChange = onValueChange,
                     textStyle = TextStyle(fontSize = 13.sp, color = Fg, lineHeight = 17.sp),
                     cursorBrush = SolidColor(Accent),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = if (password) KeyboardType.Password else KeyboardType.Text
+                    ),
                     visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -333,6 +340,7 @@ private fun SyncField(
                     Text(
                         text = placeholder,
                         fontSize = 13.sp,
+                        lineHeight = 17.sp,
                         color = Muted.copy(alpha = 0.6f)
                     )
                 }

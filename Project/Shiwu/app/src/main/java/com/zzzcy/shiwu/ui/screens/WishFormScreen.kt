@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.zzzcy.shiwu.data.ShiwuRepository
 import com.zzzcy.shiwu.data.Wish
 import com.zzzcy.shiwu.ui.components.HeaderIconButton
+import com.zzzcy.shiwu.ui.components.consumeOverlayTaps
 import com.zzzcy.shiwu.ui.components.PillChip
 import com.zzzcy.shiwu.ui.components.dashedBorder
 import com.zzzcy.shiwu.ui.theme.Accent
@@ -115,6 +116,7 @@ fun WishFormScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .consumeOverlayTaps()
             .shadow(18.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = Color(0x33000000))
             .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
             .background(Surface, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
