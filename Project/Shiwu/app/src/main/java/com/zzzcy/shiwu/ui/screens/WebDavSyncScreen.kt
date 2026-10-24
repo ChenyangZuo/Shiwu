@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,17 +81,35 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isDebug = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-    val saved = remember { SyncConfigStore.load(context) }
+    val loadResult = remember { SyncConfigStore.loadResult(context) }
+    val saved = loadResult.config
     var server by remember { mutableStateOf(saved?.server ?: "") }
     var username by remember { mutableStateOf(saved?.username ?: "") }
     var password by remember { mutableStateOf(saved?.password ?: "") }
-    var busy by remember { mutableStateOf(false) }
+    var testing by remember { mutableStateOf(false) }
+    var syncing by remember { mutableStateOf(false) }
+    val busy = testing || syncing
     var lastReport by remember { mutableStateOf<String?>(null) }
     var lastNotes by remember { mutableStateOf<List<String>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val lastSync = remember { SyncConfigStore.lastSyncAt(context) }
+    var error by remember {
+        mutableStateOf<String?>(
+            if (loadResult.decryptFailed) "已保存的密码无法解密（可能换机/恢复备份），请重新输入密码" else null
+        )
+    }
+    var lastSync by remember { mutableStateOf(SyncConfigStore.lastSyncAt(context)) }
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    fun errorText(e: Throwable): String {
+        val m = e.message ?: "同步失败"
+        return when {
+            m.contains("401") -> "账号或密码错误"
+            m.contains("403") -> "服务器拒绝访问（无权限）"
+            m.contains("404") -> "服务器路径不存在"
+            m.contains("412") || m.contains("锁") -> "其他设备正在同步，请稍后重试"
+            m.contains("507") -> "服务器存储空间不足"
+            else -> m
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -133,6 +152,7 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
+                    .imePadding()
                     .padding(horizontal = 18.dp)
                     .padding(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -156,32 +176,42 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             ActionButton("保存配置", accent = true, enabled = !busy) {
-                                if (server.isBlank()) {
+                                val url = server.trim()
+                                if (url.isEmpty()) {
                                     toast("请填写服务器地址")
                                 } else {
-                                    SyncConfigStore.save(
+                                    val ok = SyncConfigStore.save(
                                         context,
-                                        WebDavSyncManager.Config(server, username, password)
+                                        WebDavSyncManager.Config(url, username.trim(), password)
                                     )
-                                    toast("配置已保存")
+                                    toast(if (ok) "配置已保存" else "配置保存失败：无法加密密码")
                                 }
                             }
-                            ActionButton("测试连接", accent = false, enabled = !busy) {
-                                busy = true
-                                scope.launch {
-                                    val result = runCatching {
-                                        withContext(Dispatchers.IO) {
-                                            val c = WebDavClient(server, username, password)
-                                            c.mkcol(WebDavSyncManager.ROOT)
-                                            c.propfind(WebDavSyncManager.ROOT)
+                            ActionButton(
+                                text = if (testing) "连接中…" else "测试连接",
+                                accent = false,
+                                enabled = !busy
+                            ) {
+                                val url = server.trim()
+                                if (url.isEmpty()) {
+                                    toast("请填写服务器地址")
+                                } else {
+                                    testing = true
+                                    scope.launch {
+                                        val result = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                val c = WebDavClient(url, username.trim(), password)
+                                                c.mkcol(WebDavSyncManager.ROOT)
+                                                c.propfind(WebDavSyncManager.ROOT)
+                                            }
                                         }
+                                        testing = false
+                                        result.onSuccess { toast("连接成功") }
+                                            .onFailure {
+                                                Log.e("ShiwuSync", "测试连接失败", it)
+                                                toast("连接失败：${errorText(it)}")
+                                            }
                                     }
-                                    busy = false
-                                    result.onSuccess { toast("连接成功") }
-                                        .onFailure {
-                                            Log.e("ShiwuSync", "测试连接失败", it)
-                                            toast("连接失败：${it.message}")
-                                        }
                                 }
                             }
                         }
@@ -207,33 +237,37 @@ fun WebDavSyncScreen(onClose: () -> Unit) {
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             ActionButton(
-                                text = if (busy) "同步中…" else "立即同步",
+                                text = if (syncing) "同步中…" else "立即同步",
                                 accent = true,
                                 enabled = !busy && server.isNotBlank()
                             ) {
-                                busy = true
+                                val url = server.trim()
+                                syncing = true
                                 error = null
+                                lastReport = null
+                                lastNotes = emptyList()
                                 scope.launch {
                                     val result = runCatching {
                                         WebDavSyncManager.sync(
                                             context,
-                                            WebDavSyncManager.Config(server, username, password)
+                                            WebDavSyncManager.Config(url, username.trim(), password)
                                         )
                                     }
-                                    busy = false
+                                    syncing = false
                                     result.onSuccess { report ->
                                         SyncConfigStore.markSynced(context)
+                                        lastSync = SyncConfigStore.lastSyncAt(context)
                                         lastReport = report.summary()
                                         lastNotes = report.notes
                                         toast("同步完成：${report.summary()}")
                                     }.onFailure {
                                         Log.e("ShiwuSync", "同步失败", it)
-                                        error = it.message ?: "同步失败"
-                                        toast("同步失败：${it.message}")
+                                        error = errorText(it)
+                                        toast("同步失败：${errorText(it)}")
                                     }
                                 }
                             }
-                            if (busy) {
+                            if (testing || syncing) {
                                 Spacer(Modifier.width(12.dp))
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),

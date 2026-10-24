@@ -34,6 +34,7 @@ import com.zzzcy.shiwu.ui.theme.Muted
 import com.zzzcy.shiwu.ui.theme.OnAccent
 import com.zzzcy.shiwu.ui.theme.SerifFamily
 import com.zzzcy.shiwu.ui.theme.Surface
+import com.zzzcy.shiwu.ui.components.consumeOverlayTaps
 
 /** 首次启动昵称引导：全屏覆盖，输入昵称后才能进入 App */
 @Composable
@@ -43,6 +44,7 @@ fun NicknameSetupScreen(onDone: (String) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .consumeOverlayTaps()
             .background(Surface),
         contentAlignment = Alignment.Center
     ) {
