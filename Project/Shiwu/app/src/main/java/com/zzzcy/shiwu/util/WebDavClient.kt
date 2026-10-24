@@ -1,13 +1,16 @@
 package com.zzzcy.shiwu.util
 
-import android.util.Base64
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStreamWriter
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
+import java.util.Base64
+import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 /**
@@ -34,106 +37,138 @@ class WebDavClient(
         val url = URL(root.trimEnd('/') + "/" + path.trimStart('/'))
         val secure = url.protocol == "https"
         val port = if (url.port != -1) url.port else if (secure) 443 else 80
-        val socket = if (secure) {
-            SSLSocketFactory.getDefault().createSocket(url.host, port)
-        } else {
-            Socket(url.host, port)
-        }
+        val rawSocket = Socket()
         try {
-            socket.soTimeout = 20_000
-            val out = OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8)
+            // 必须带连接超时，否则不可达的服务器会一直阻塞同步流程。
+            rawSocket.connect(InetSocketAddress(url.host, port), CONNECT_TIMEOUT_MS)
+            rawSocket.soTimeout = READ_TIMEOUT_MS
+            val socket: Socket = if (secure) {
+                val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+                val ssl = factory.createSocket(rawSocket, url.host, port, true) as SSLSocket
+                // 自签证书会在这里因主机名校验/信任链失败而抛错，这是预期行为。
+                val params = ssl.sslParameters
+                params.endpointIdentificationAlgorithm = "HTTPS"
+                ssl.sslParameters = params
+                ssl.startHandshake()
+                ssl
+            } else {
+                rawSocket
+            }
+            socket.soTimeout = READ_TIMEOUT_MS
+
+            val output = socket.getOutputStream()
+            val writer = OutputStreamWriter(output, Charsets.UTF_8)
             val requestPath = url.path + (if (url.query != null) "?${url.query}" else "")
-            out.write("$method $requestPath HTTP/1.1\r\n")
-            out.write("Host: ${url.host}${if (url.port != -1) ":${url.port}" else ""}\r\n")
-            out.write(
+            writer.write("$method $requestPath HTTP/1.1\r\n")
+            writer.write("Host: ${url.host}${if (url.port != -1) ":${url.port}" else ""}\r\n")
+            writer.write(
                 "Authorization: Basic " +
-                    Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8), Base64.NO_WRAP) +
+                    Base64.getEncoder().encodeToString("$username:$password".toByteArray(Charsets.UTF_8)) +
                     "\r\n"
             )
-            out.write("User-Agent: Shiwu-WebDAV/1.0\r\n")
-            headers.forEach { (k, v) -> out.write("$k: $v\r\n") }
+            writer.write("User-Agent: Shiwu-WebDAV/1.0\r\n")
+            headers.forEach { (k, v) -> writer.write("$k: $v\r\n") }
             if (body != null) {
-                out.write("Content-Length: ${body.size}\r\n")
+                writer.write("Content-Length: ${body.size}\r\n")
+            } else {
+                writer.write("Content-Length: 0\r\n")
             }
-            out.write("Connection: close\r\n\r\n")
-            out.flush()
+            writer.write("Connection: close\r\n\r\n")
+            writer.flush()
             if (body != null) {
-                socket.getOutputStream().write(body)
-                socket.getOutputStream().flush()
+                output.write(body)
+                output.flush()
             }
 
             val input = BufferedInputStream(socket.getInputStream())
             val statusLine = readLine(input)
-            val statusMatch = Regex("^HTTP/\\d\\.\\d\\s+(\\d+)").find(statusLine)
-            val code = statusMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+            if (statusLine.isEmpty()) {
+                throw IOException("$method $path：服务器未返回有效响应")
+            }
+            val statusMatch = STATUS_LINE.find(statusLine)
+                ?: throw IOException("$method $path：无法解析响应状态行")
+            val code = statusMatch.groupValues[1].toInt()
             var contentLength = -1
             var chunked = false
             while (true) {
                 val line = readLine(input)
                 if (line.isEmpty()) break
-                val lower = line.lowercase()
+                val colon = line.indexOf(':')
+                if (colon <= 0) continue
+                val name = line.substring(0, colon).trim().lowercase()
+                val value = line.substring(colon + 1).trim()
                 when {
-                    lower.startsWith("content-length:") -> contentLength = line.substringAfter(':').trim().toIntOrNull() ?: -1
-                    lower.startsWith("transfer-encoding:") && lower.contains("chunked") -> chunked = true
+                    name == "content-length" ->
+                        contentLength = value.toIntOrNull()
+                            ?: throw IOException("$method $path：非法的 Content-Length（$value）")
+                    name == "transfer-encoding" && value.lowercase().contains("chunked") -> chunked = true
                 }
             }
             val data = when {
-                contentLength >= 0 -> readExact(input, contentLength)
+                // Transfer-Encoding 优先于 Content-Length
                 chunked -> readChunked(input)
+                contentLength >= 0 -> readExact(input, contentLength)
                 else -> input.readBytes()
             }
             return RawResponse(code, data)
         } finally {
-            runCatching { socket.close() }
+            runCatching { rawSocket.close() }
         }
     }
 
     private fun readLine(input: InputStream): String {
-        val sb = StringBuilder()
-        var prev = -1
+        val out = ByteArrayOutputStream()
         while (true) {
             val b = input.read()
             if (b == -1) break
-            if (prev == '\r'.code && b == '\n'.code) {
-                if (sb.isNotEmpty() && sb.last() == '\r') sb.setLength(sb.length - 1)
-                break
-            }
-            sb.append(b.toChar())
-            prev = b
+            if (b == '\n'.code) break
+            out.write(b)
         }
-        return sb.toString()
+        val bytes = out.toByteArray()
+        val end = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes.size - 1 else bytes.size
+        return String(bytes, 0, end, Charsets.UTF_8)
     }
 
+    /** 读满 length 字节；EOF 提前出现说明响应被截断，必须报错而不能当成功。 */
     private fun readExact(input: InputStream, length: Int): ByteArray {
+        if (length < 0) throw IOException("非法的响应长度：$length")
         val buf = ByteArray(length)
         var read = 0
         while (read < length) {
             val n = input.read(buf, read, length - read)
-            if (n == -1) break
+            if (n == -1) {
+                throw EOFException("响应体被截断：期望 $length 字节，实际 $read 字节")
+            }
             read += n
         }
-        return buf.copyOf(read)
+        return buf
     }
 
     private fun readChunked(input: InputStream): ByteArray {
         val out = ByteArrayOutputStream()
         while (true) {
             val sizeLine = readLine(input).trim()
-            val size = sizeLine.substringBefore(';').trim().toIntOrNull(16) ?: 0
+            if (sizeLine.isEmpty()) throw IOException("分块编码非法：缺少 chunk 长度")
+            val size = sizeLine.substringBefore(';').trim().toIntOrNull(16)
+                ?: throw IOException("分块编码非法：$sizeLine")
+            if (size < 0) throw IOException("分块编码非法：$sizeLine")
             if (size == 0) {
                 // 结尾 CRLF + 可选 trailer
-                readLine(input)
                 while (true) {
-                    val t = readLine(input)
-                    if (t.isEmpty()) break
+                    if (readLine(input).isEmpty()) break
                 }
                 break
             }
             out.write(readExact(input, size))
-            readLine(input) // chunk 结尾 CRLF
+            if (readLine(input).isNotEmpty()) {
+                throw IOException("分块编码非法：chunk 未以 CRLF 结束")
+            }
         }
         return out.toByteArray()
     }
+
+    private fun failureMessage(method: String, path: String, code: Int): String =
+        "$method $path 失败：HTTP $code"
 
     // ---------- 对外 API ----------
 
@@ -143,25 +178,27 @@ class WebDavClient(
         return when (r.statusCode) {
             200 -> r.body
             404 -> null
-            else -> throw WebDavException("读取失败", r.statusCode)
+            else -> throw WebDavException(failureMessage("GET", path, r.statusCode), r.statusCode)
         }
     }
 
-    /** PUT 文件；返回 HTTP 状态码（412 表示 If-None-Match 冲突） */
+    /**
+     * PUT 文件；返回 HTTP 状态码。
+     * 仅当 ifNoneMatch=true 时 412（目标已存在）才是合法结果，其余 412 均视为错误。
+     */
     fun put(path: String, data: ByteArray, ifNoneMatch: Boolean = false): Int {
         val headers = if (ifNoneMatch) mapOf("If-None-Match" to "*") else emptyMap()
         val r = request(path, "PUT", data, headers)
-        if (r.statusCode !in 200..299 && r.statusCode != 412) {
-            throw WebDavException("上传失败", r.statusCode)
-        }
-        return r.statusCode
+        if (r.statusCode in 200..299) return r.statusCode
+        if (ifNoneMatch && r.statusCode == 412) return r.statusCode
+        throw WebDavException(failureMessage("PUT", path, r.statusCode), r.statusCode)
     }
 
     /** DELETE 文件；404 视为成功（不存在） */
     fun delete(path: String) {
         val r = request(path, "DELETE")
         if (r.statusCode !in 200..299 && r.statusCode != 404) {
-            throw WebDavException("删除失败", r.statusCode)
+            throw WebDavException(failureMessage("DELETE", path, r.statusCode), r.statusCode)
         }
     }
 
@@ -169,14 +206,33 @@ class WebDavClient(
     fun mkcol(path: String) {
         val r = request(path, "MKCOL")
         if (r.statusCode !in 200..299 && r.statusCode !in listOf(301, 405)) {
-            throw WebDavException("创建目录失败", r.statusCode)
+            throw WebDavException(failureMessage("MKCOL", path, r.statusCode), r.statusCode)
         }
+    }
+
+    /**
+     * MOVE 重命名/移动（WebDAV 原子替换的关键）。
+     * Destination 必须是完整绝对 URL；overwrite=true 时发送 Overwrite: T。
+     */
+    fun move(src: String, dst: String, overwrite: Boolean = true): Int {
+        val destination = root.trimEnd('/') + "/" + dst.trimStart('/')
+        val headers = mapOf(
+            "Destination" to destination,
+            "Overwrite" to if (overwrite) "T" else "F"
+        )
+        val r = request(src, "MOVE", headers = headers)
+        if (r.statusCode !in 200..299) {
+            throw WebDavException(failureMessage("MOVE", src, r.statusCode), r.statusCode)
+        }
+        return r.statusCode
     }
 
     /** PROPFIND 列目录：返回子项相对名 */
     fun propfind(path: String): List<String> {
         val r = request(path, "PROPFIND", headers = mapOf("Depth" to "1", "Content-Type" to "application/xml"))
-        if (r.statusCode !in 200..299) throw WebDavException("列目录失败", r.statusCode)
+        if (r.statusCode !in 200..299) {
+            throw WebDavException(failureMessage("PROPFIND", path, r.statusCode), r.statusCode)
+        }
         return parseHrefs(String(r.body, Charsets.UTF_8), path)
     }
 
@@ -196,5 +252,11 @@ class WebDavClient(
             }
         }
         return names.toList()
+    }
+
+    private companion object {
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 30_000
+        private val STATUS_LINE = Regex("^HTTP/\\d\\.\\d\\s+(\\d{3})")
     }
 }
