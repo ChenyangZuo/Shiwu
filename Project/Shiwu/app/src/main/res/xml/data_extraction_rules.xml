@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+  Android 12+ 云备份 / 换机克隆规则。
+  device_state.json 位于 noBackupFilesDir，云端备份与 D2D 克隆均不会携带；
+  请勿把 deviceId / 序列分配器 / gid_migrated 写回 sharedpref，也不要 include no_backup。
 -->
 <data-extraction-rules>
     <cloud-backup>

@@ -161,17 +161,24 @@ interface ItemDao {
     @Query("DELETE FROM items WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("UPDATE items SET category = :newName, updatedAt = :now WHERE category = :oldName")
-    suspend fun updateCategory(oldName: String, newName: String, now: Long)
+    // 低 40 位序号的全局最大值（1099511627775 == 0xFFFFFFFFFF）。
+    // 不能写成 MAX(id) & mask：多设备前缀共存时最大 id 的低 40 位不一定是最大序号。
+    @Query("SELECT MAX(id & 1099511627775) FROM items")
+    suspend fun maxSeq(): Long?
 
-    @Query("UPDATE items SET deleted = 1, deletedAt = :deletedAt, updatedAt = :deletedAt WHERE listId = :listId")
-    suspend fun softDeleteByList(listId: Long, deletedAt: Long)
+    @Query("SELECT * FROM items WHERE id = :id")
+    suspend fun findById(id: Long): ItemEntity?
 
-    @Query("UPDATE items SET location = :newName, updatedAt = :now WHERE location = :oldName")
-    suspend fun updateLocation(oldName: String, newName: String, now: Long)
+    // 分类/地点改名、删除会作为普通记录更新参与同步：必须 bump rev 并写入 updatedBy，
+    // 否则另一端会一直认为本地版本落后/相同，导致 rev 与内容不收敛。
+    @Query("UPDATE items SET category = :newName, updatedAt = :now, rev = rev + 1, updatedBy = :updatedBy WHERE category = :oldName")
+    suspend fun updateCategory(oldName: String, newName: String, now: Long, updatedBy: String)
 
-    @Query("UPDATE items SET location = NULL, updatedAt = :now WHERE location = :name")
-    suspend fun clearLocation(name: String, now: Long)
+    @Query("UPDATE items SET location = :newName, updatedAt = :now, rev = rev + 1, updatedBy = :updatedBy WHERE location = :oldName")
+    suspend fun updateLocation(oldName: String, newName: String, now: Long, updatedBy: String)
+
+    @Query("UPDATE items SET location = NULL, updatedAt = :now, rev = rev + 1, updatedBy = :updatedBy WHERE location = :name")
+    suspend fun clearLocation(name: String, now: Long, updatedBy: String)
 }
 
 @Dao
@@ -185,17 +192,17 @@ interface WishDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(wishes: List<WishEntity>)
 
-    @Query("UPDATE wishes SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE id = :id")
-    suspend fun softDelete(id: Long, now: Long)
+    @Query("SELECT MAX(id & 1099511627775) FROM wishes")
+    suspend fun maxSeq(): Long?
 
-    @Query("UPDATE wishes SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE listId = :listId")
-    suspend fun softDeleteByList(listId: Long, now: Long)
+    @Query("SELECT * FROM wishes WHERE id = :id")
+    suspend fun findById(id: Long): WishEntity?
 
     @Query("DELETE FROM wishes WHERE id = :id")
     suspend fun purge(id: Long)
 
-    @Query("UPDATE wishes SET category = :newName, updatedAt = :now WHERE category = :oldName")
-    suspend fun updateCategory(oldName: String, newName: String, now: Long)
+    @Query("UPDATE wishes SET category = :newName, updatedAt = :now, rev = rev + 1, updatedBy = :updatedBy WHERE category = :oldName")
+    suspend fun updateCategory(oldName: String, newName: String, now: Long, updatedBy: String)
 }
 
 @Dao
@@ -212,8 +219,15 @@ interface ListDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(lists: List<ListEntity>)
 
-    @Query("UPDATE lists SET deleted = 1, deletedAt = :now, updatedAt = :now WHERE id = :id")
-    suspend fun softDelete(id: Long, now: Long)
+    @Query("SELECT MAX(id & 1099511627775) FROM lists")
+    suspend fun maxSeq(): Long?
+
+    @Query("SELECT * FROM lists WHERE id = :id")
+    suspend fun findById(id: Long): ListEntity?
+
+    /** 未删除清单，按创建时间排序（同步写回后校正 currentListId 用） */
+    @Query("SELECT * FROM lists WHERE deleted = 0 ORDER BY createdAt ASC, id ASC")
+    suspend fun visibleLists(): List<ListEntity>
 
     @Query("DELETE FROM lists WHERE id = :id")
     suspend fun purge(id: Long)

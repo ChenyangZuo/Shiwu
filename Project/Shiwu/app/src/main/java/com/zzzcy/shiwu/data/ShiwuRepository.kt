@@ -31,15 +31,30 @@ import java.util.Locale
  */
 object ShiwuRepository {
     private val initLock = Any()
+    /** 单把锁保护三个序列的「自增 + 持久化」，主线程与同步 IO 线程共用 */
+    private val seqLock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var db: AppDatabase? = null
     private var prefs: SharedPreferences? = null
+    private var deviceStateStore: DeviceStateStore? = null
     private var initialized = false
     private var firstLaunchDay: Long = LocalDate.now().toEpochDay()
     private var deviceId = 0L
     private var itemSeq = 0L
     private var wishSeq = 0L
     private var listSeq = 0L
+
+    @Volatile
+    private var gidMigrated = false
+
+    /** 迁移事务前落盘的清单旧→新 ID 映射，用于事务已提交但完成标记未写时的崩溃恢复 */
+    private const val KEY_PENDING_LIST_ID_MAP = "gid_pending_list_id_map"
+
+    /**
+     * 回收站「彻底删除」的墓碑标记：不物理删行，保留 deleted 墓碑参与同步，
+     * 但 trashItems() 不展示；避免同步时被远端旧墓碑复活。
+     */
+    private const val PURGED_DELETED_AT = Long.MIN_VALUE
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     private val _wishes = MutableStateFlow<List<Wish>>(emptyList())
@@ -93,14 +108,7 @@ object ShiwuRepository {
                 firstLaunchDay = LocalDate.now().toEpochDay()
                 prefs?.edit()?.putLong("first_launch_day", firstLaunchDay)?.apply()
             }
-            deviceId = prefs?.getLong("device_id", 0L) ?: 0L
-            if (deviceId <= 0L) {
-                deviceId = (Random.nextLong() and 0x7FFFFF).coerceAtLeast(1L)
-                prefs?.edit()?.putLong("device_id", deviceId)?.apply()
-            }
-            itemSeq = prefs?.getLong("item_seq", 0L) ?: 0L
-            wishSeq = prefs?.getLong("wish_seq", 0L) ?: 0L
-            listSeq = prefs?.getLong("list_seq", 0L) ?: 0L
+            loadDeviceState(context)
 
             // 旧的 JSON 存储不再使用（按确认不做数据迁移）
             File(context.filesDir, "shiwu_data.json").delete()
@@ -108,6 +116,7 @@ object ShiwuRepository {
             runBlocking {
                 ensureDefaults()
                 migrateGlobalIdsIfNeeded()
+                calibrateSequences()
                 _items.value = db!!.itemDao().observeAll().first().map { it.toModel() }
                 _wishes.value = db!!.wishDao().observeAll().first().map { it.toModel() }.filter { !it.deleted }
                 _lists.value = db!!.listDao().observeAll().first().map { it.toModel() }.filter { !it.deleted }
@@ -141,19 +150,66 @@ object ShiwuRepository {
         }
     }
 
+    /**
+     * 设备状态以 no_backup 目录下的 DeviceStateStore 为唯一来源：
+     * - 有文件：完全以文件为准；
+     * - 无文件（首次安装 / 从旧版本恢复备份）：生成新的 deviceId，绝不沿用 legacy prefs 的
+     *   device_id，否则备份恢复/换机后会出现两台设备共用设备号；
+     * - gidMigrated 必须继承 legacy prefs：旧版本已把 DB 内 ID 迁移为全局 ID，
+     *   若丢失该标记会重跑迁移并重新分配 ID；
+     * - legacy 序号仅作为初值，随后由 DB MAX(id) 校准。
+     *
+     * 读取完成后删除 legacy prefs 中的同步字段（昵称/主题/清单锁/WebDAV 配置等保留）。
+     */
+    private fun loadDeviceState(context: Context) {
+        val store = DeviceStateStore(context)
+        deviceStateStore = store
+        val p = prefs
+        val legacyGidMigrated = p?.getBoolean("gid_migrated", false) ?: false
+        val legacyItemSeq = p?.getLong("item_seq", 0L) ?: 0L
+        val legacyWishSeq = p?.getLong("wish_seq", 0L) ?: 0L
+        val legacyListSeq = p?.getLong("list_seq", 0L) ?: 0L
+
+        val stored = store.read()
+        if (stored != null && stored.deviceId > 0L) {
+            deviceId = stored.deviceId
+            itemSeq = stored.itemSeq
+            wishSeq = stored.wishSeq
+            listSeq = stored.listSeq
+            gidMigrated = stored.gidMigrated
+        } else {
+            deviceId = newDeviceId()
+            itemSeq = legacyItemSeq.coerceAtLeast(0L)
+            wishSeq = legacyWishSeq.coerceAtLeast(0L)
+            listSeq = legacyListSeq.coerceAtLeast(0L)
+            // 文件损坏但标记有效时也不能重跑迁移
+            gidMigrated = legacyGidMigrated || (stored?.gidMigrated == true)
+            store.write(DeviceState(deviceId, itemSeq, wishSeq, listSeq, gidMigrated))
+        }
+
+        // 同步删除 legacy key，避免旧备份继续携带 deviceId/序号
+        p?.edit()
+            ?.remove("device_id")
+            ?.remove("item_seq")
+            ?.remove("wish_seq")
+            ?.remove("list_seq")
+            ?.remove("gid_migrated")
+            ?.commit()
+    }
+
+    private fun newDeviceId(): Long =
+        (Random.nextLong() and 0x7FFFFFL).coerceAtLeast(1L)
+
     /** 首次启动结构数据：默认清单与默认分类（非假数据） */
     private suspend fun ensureDefaults() {
         val d = db ?: return
         if (d.listDao().count() == 0L) {
-            val id = globalId(++listSeq)
+            val id = nextListId()
             val now = System.currentTimeMillis()
             d.listDao().upsert(
                 ListEntity(id, "我的物品", now, now, 1, deviceId.toString(), 0, false, null)
             )
-            prefs?.edit()
-                ?.putLong("list_seq", listSeq)
-                ?.putLong("current_list_id", id)
-                ?.apply()
+            prefs?.edit()?.putLong("current_list_id", id)?.commit()
         }
         if (d.categoryDao().count() == 0L) {
             d.categoryDao().upsertAll(defaultCategories.map { it.toEntity() })
@@ -166,60 +222,259 @@ object ShiwuRepository {
     /**
      * 启用同步前的存量数据一次性迁移：把所有记录重新分配为全局唯一 ID，
      * 并在同一事务内重写引用（items.listId / wishes.listId / wishes.purchasedItemId）。
+     *
+     * 崩溃安全：清单旧→新 ID 映射在事务前写入 prefs。若事务提交后、完成标记前崩溃，
+     * 下次启动可凭该映射补做清单锁迁移；若事务尚未提交，则可复用映射重跑迁移。
+     * 完成标记只在锁迁移、current_list_id 重写、序号持久化全部完成后写入。
      */
     private suspend fun migrateGlobalIdsIfNeeded() {
         val d = db ?: return
-        val p = prefs ?: return
-        if (p.getBoolean("gid_migrated", false)) return
-        val listIdMap = HashMap<Long, Long>()
+        if (gidMigrated) {
+            clearPendingListIdMap()
+            return
+        }
+        val pending = loadPendingListIdMap()
+        val lists = d.listDao().observeAll().first()
+        if (pending != null) {
+            val pendingApplied = lists.none { it.id in pending.keys } &&
+                lists.any { it.id in pending.values }
+            if (pendingApplied) {
+                finishGlobalIdMigration(pending)
+                return
+            }
+        }
+
+        val items = d.itemDao().observeAll().first()
+        val wishes = d.wishDao().observeAll().first()
+        val needsMigration = lists.any { !isGlobalSyncId(it.id) } ||
+            items.any { !isGlobalSyncId(it.id) } ||
+            wishes.any { !isGlobalSyncId(it.id) }
+        if (!needsMigration) {
+            // DB 已是全局 ID（旧实现已提交事务但完成标记丢失）：不能重新分配 ID。
+            // 此时没有可靠的旧→新映射，清单锁只能保持原样。
+            clearPendingListIdMap()
+            markGidMigrated()
+            return
+        }
+
+        val listIdMap = LinkedHashMap<Long, Long>()
+        pending?.forEach { (oldId, newId) -> listIdMap[oldId] = newId }
         val itemIdMap = HashMap<Long, Long>()
+        val wishIdMap = HashMap<Long, Long>()
+
+        // 自增 + 持久化在同一把 seqLock 内；同一批次只落盘一次。
+        allocateIds {
+            lists.forEach { list ->
+                if (!isGlobalSyncId(list.id) && !listIdMap.containsKey(list.id)) {
+                    listIdMap[list.id] = nextListIdLocked()
+                }
+            }
+            items.forEach { item ->
+                if (!isGlobalSyncId(item.id)) itemIdMap[item.id] = nextItemIdLocked()
+            }
+            wishes.forEach { wish ->
+                if (!isGlobalSyncId(wish.id)) wishIdMap[wish.id] = nextWishIdLocked()
+            }
+        }
+        // 关键顺序：先持久化映射，再提交事务。事务提交后崩溃也能补迁移清单锁。
+        if (listIdMap.isNotEmpty()) savePendingListIdMap(listIdMap)
+
+        val existingListIds = lists.mapTo(HashSet()) { it.id }
+        val fallbackListId = listIdMap.values.firstOrNull() ?: lists.firstOrNull()?.id
+        fun remapList(listId: Long): Long =
+            listIdMap[listId] ?: listId.takeIf { it in existingListIds } ?: fallbackListId ?: listId
+
         d.withTransaction {
-            val oldLists = d.listDao().observeAll().first()
-            oldLists.forEach { l ->
-                val newId = globalId(++listSeq)
-                listIdMap[l.id] = newId
-                d.listDao().purge(l.id)
-                d.listDao().upsert(l.copy(id = newId, rev = 1, updatedBy = deviceId.toString()))
+            lists.forEach { list ->
+                val newId = listIdMap[list.id] ?: return@forEach
+                if (newId != list.id) {
+                    d.listDao().purge(list.id)
+                    d.listDao().upsert(
+                        list.copy(
+                            id = newId,
+                            rev = 1,
+                            updatedBy = deviceId.toString(),
+                            syncedRev = 0
+                        )
+                    )
+                }
             }
-            val oldItems = d.itemDao().observeAll().first()
-            oldItems.forEach { it ->
-                val newId = globalId(++itemSeq)
-                itemIdMap[it.id] = newId
-                val newList = listIdMap[it.listId] ?: listIdMap.values.firstOrNull() ?: 1L
-                d.itemDao().delete(it.id)
-                d.itemDao().upsert(it.copy(id = newId, listId = newList, rev = 1, updatedBy = deviceId.toString()))
+            items.forEach { item ->
+                val newId = itemIdMap[item.id] ?: item.id
+                val newListId = remapList(item.listId)
+                if (newId != item.id) d.itemDao().delete(item.id)
+                d.itemDao().upsert(
+                    item.copy(
+                        id = newId,
+                        listId = newListId,
+                        rev = 1,
+                        updatedBy = deviceId.toString(),
+                        syncedRev = 0
+                    )
+                )
             }
-            val oldWishes = d.wishDao().observeAll().first()
-            oldWishes.forEach { w ->
-                val newId = globalId(++wishSeq)
-                val newList = listIdMap[w.listId] ?: listIdMap.values.firstOrNull() ?: 1L
-                val newPurchased = w.purchasedItemId?.let { itemIdMap[it] }
-                d.wishDao().purge(w.id)
+            wishes.forEach { wish ->
+                val newId = wishIdMap[wish.id] ?: wish.id
+                val newListId = remapList(wish.listId)
+                val newPurchased = wish.purchasedItemId?.let { oldPurchased ->
+                    itemIdMap[oldPurchased]
+                        ?: oldPurchased.takeIf { pid -> items.any { it.id == pid } }
+                }
+                if (newId != wish.id) d.wishDao().purge(wish.id)
                 d.wishDao().upsert(
-                    w.copy(id = newId, listId = newList, purchasedItemId = newPurchased, rev = 1, updatedBy = deviceId.toString())
+                    wish.copy(
+                        id = newId,
+                        listId = newListId,
+                        purchasedItemId = newPurchased,
+                        rev = 1,
+                        updatedBy = deviceId.toString(),
+                        syncedRev = 0
+                    )
                 )
             }
         }
-        val cur = p.getLong("current_list_id", -1L)
-        val mapped = listIdMap[cur] ?: listIdMap.values.firstOrNull()
-        p.edit()
-            .putBoolean("gid_migrated", true)
-            .putLong("item_seq", itemSeq)
-            .putLong("wish_seq", wishSeq)
-            .putLong("list_seq", listSeq)
-            .apply()
-        if (mapped != null) {
-            p.edit().putLong("current_list_id", mapped).apply()
+        finishGlobalIdMigration(listIdMap)
+    }
+
+    /** 事务提交后收尾：迁清单锁 → 校正 current_list_id → 清映射 → 最后写完成标记 */
+    private suspend fun finishGlobalIdMigration(listIdMap: Map<Long, Long>) {
+        migrateListLockPrefs(listIdMap)
+        val d = db
+        val p = prefs
+        if (d == null || p == null) return
+        val actualLists = d.listDao().observeAll().first()
+        val current = p.getLong("current_list_id", -1L)
+        val mapped = listIdMap[current]
+        val target = when {
+            actualLists.any { it.id == current } -> current
+            mapped != null && actualLists.any { it.id == mapped } -> mapped
+            else -> actualLists.firstOrNull()?.id
+        }
+        if (target != null && target != current) {
+            p.edit().putLong("current_list_id", target).commit()
+        }
+        clearPendingListIdMap()
+        markGidMigrated()
+    }
+
+    /**
+     * 把 list_lock_<旧id> 复制到 list_lock_<新id> 并删除旧 key。
+     * 崩溃重入时新 key 已存在则不覆盖（保留已复制/已更新的值），仅清理旧 key。
+     */
+    private fun migrateListLockPrefs(listIdMap: Map<Long, Long>) {
+        if (listIdMap.isEmpty()) return
+        val p = prefs ?: return
+        val editor = p.edit()
+        var changed = false
+        listIdMap.forEach { (oldId, newId) ->
+            if (oldId == newId) return@forEach
+            val oldKey = lockPrefKey(oldId)
+            val raw = p.getString(oldKey, null) ?: return@forEach
+            val newKey = lockPrefKey(newId)
+            if (!p.contains(newKey)) editor.putString(newKey, raw)
+            editor.remove(oldKey)
+            changed = true
+        }
+        if (changed) editor.commit()
+    }
+
+    private fun markGidMigrated() {
+        synchronized(seqLock) {
+            gidMigrated = true
+            persistCountersLocked()
         }
     }
 
-    private fun persistCounters() {
-        prefs?.edit()
-            ?.putLong("item_seq", itemSeq)
-            ?.putLong("wish_seq", wishSeq)
-            ?.putLong("list_seq", listSeq)
-            ?.apply()
+    // ---------- 序列分配（主线程 + 同步 IO 线程共用，必须在同一把锁内自增并持久化） ----------
+
+    private fun <T> allocateIds(block: () -> T): T = synchronized(seqLock) {
+        try {
+            block()
+        } finally {
+            persistCountersLocked()
+        }
     }
+
+    private fun nextItemId(): Long = allocateIds { nextItemIdLocked() }
+
+    private fun nextWishId(): Long = allocateIds { nextWishIdLocked() }
+
+    private fun nextListId(): Long = allocateIds { nextListIdLocked() }
+
+    private fun nextItemIdLocked(): Long {
+        itemSeq += 1
+        return globalId(itemSeq)
+    }
+
+    private fun nextWishIdLocked(): Long {
+        wishSeq += 1
+        return globalId(wishSeq)
+    }
+
+    private fun nextListIdLocked(): Long {
+        listSeq += 1
+        return globalId(listSeq)
+    }
+
+    /** 调用方必须持有 seqLock */
+    private fun persistCountersLocked() {
+        deviceStateStore?.write(DeviceState(deviceId, itemSeq, wishSeq, listSeq, gidMigrated))
+    }
+
+    /**
+     * 用 DB 中各表 MAX(id) 的低 40 位校准计数器，防止 prefs/DeviceState 丢失或回退后
+     * 从 1 开始分配到与已有记录冲突的 ID。
+     */
+    private suspend fun calibrateSequences() {
+        val d = db ?: return
+        val itemMax = d.itemDao().maxSeq()
+        val wishMax = d.wishDao().maxSeq()
+        val listMax = d.listDao().maxSeq()
+        synchronized(seqLock) {
+            itemSeq = calibrateSequence(itemSeq, itemMax)
+            wishSeq = calibrateSequence(wishSeq, wishMax)
+            listSeq = calibrateSequence(listSeq, listMax)
+            persistCountersLocked()
+        }
+    }
+
+    // ---------- 全局 ID 迁移的崩溃恢复辅助 ----------
+
+    private fun savePendingListIdMap(listIdMap: Map<Long, Long>) {
+        if (listIdMap.isEmpty()) {
+            clearPendingListIdMap()
+            return
+        }
+        val o = JSONObject()
+        listIdMap.forEach { (oldId, newId) -> o.put(oldId.toString(), newId) }
+        prefs?.edit()?.putString(KEY_PENDING_LIST_ID_MAP, o.toString())?.commit()
+    }
+
+    private fun loadPendingListIdMap(): Map<Long, Long>? {
+        val raw = prefs?.getString(KEY_PENDING_LIST_ID_MAP, null) ?: return null
+        return try {
+            val o = JSONObject(raw)
+            val keys = o.keys()
+            val map = LinkedHashMap<Long, Long>()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val oldId = key.toLongOrNull() ?: continue
+                val newId = o.optLong(key, 0L)
+                if (newId > 0L) map[oldId] = newId
+            }
+            map.ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun clearPendingListIdMap() {
+        val p = prefs ?: return
+        if (p.contains(KEY_PENDING_LIST_ID_MAP)) {
+            p.edit().remove(KEY_PENDING_LIST_ID_MAP).commit()
+        }
+    }
+
 
     private suspend fun withDb(block: suspend (AppDatabase) -> Unit) {
         val d = db ?: return
@@ -239,8 +494,7 @@ object ShiwuRepository {
     fun listWishCount(listId: Long): Int = _wishes.value.count { it.listId == listId && !it.purchased }
 
     fun addList(name: String): Long {
-        val id = globalId(++listSeq)
-        persistCounters()
+        val id = nextListId()
         val list = InventoryList(id = id, name = name.trim().ifEmpty { "我的物品" }, rev = 1, updatedBy = syncDeviceId)
         scope.launch { db?.listDao()?.upsert(list.toEntity()) }
         return id
@@ -416,6 +670,12 @@ object ShiwuRepository {
         return true
     }
 
+    /**
+     * 分类改名：items / wishes 中的分类名作为普通记录更新传播（bump rev + updatedBy），
+     * 使两端最终收敛。
+     *
+     * 注意：categories 集合本身不参与同步合并，「名称并集 / 删除后可能复活」是 v1 已知限制。
+     */
     fun renameCategory(oldName: String, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty() || trimmed == oldName) return
@@ -424,8 +684,8 @@ object ShiwuRepository {
             val now = System.currentTimeMillis()
             d.withTransaction {
                 d.categoryDao().rename(oldName, trimmed)
-                d.itemDao().updateCategory(oldName, trimmed, now)
-                d.wishDao().updateCategory(oldName, trimmed, now)
+                d.itemDao().updateCategory(oldName, trimmed, now, syncDeviceId)
+                d.wishDao().updateCategory(oldName, trimmed, now, syncDeviceId)
             }
         }
     }
@@ -434,6 +694,7 @@ object ShiwuRepository {
         scope.launch { db?.categoryDao()?.updateIcon(name, icon) }
     }
 
+    /** 删除分类：同 [renameCategory]，通过 bump 记录 rev 让引用它的 items / wishes 传播更新 */
     fun deleteCategory(name: String) {
         val fallback = _categories.value.firstOrNull { it.name != name }?.name ?: "其他"
         scope.launch {
@@ -441,8 +702,8 @@ object ShiwuRepository {
             val now = System.currentTimeMillis()
             d.withTransaction {
                 d.categoryDao().delete(name)
-                d.itemDao().updateCategory(name, fallback, now)
-                d.wishDao().updateCategory(name, fallback, now)
+                d.itemDao().updateCategory(name, fallback, now, syncDeviceId)
+                d.wishDao().updateCategory(name, fallback, now, syncDeviceId)
             }
         }
     }
@@ -464,6 +725,7 @@ object ShiwuRepository {
         return true
     }
 
+    /** 地点改名：items.location 作为普通记录更新传播（bump rev + updatedBy） */
     fun renameLocation(oldName: String, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty() || trimmed == oldName) return
@@ -472,18 +734,19 @@ object ShiwuRepository {
             val now = System.currentTimeMillis()
             d.withTransaction {
                 d.locationDao().rename(oldName, trimmed)
-                d.itemDao().updateLocation(oldName, trimmed, now)
+                d.itemDao().updateLocation(oldName, trimmed, now, syncDeviceId)
             }
         }
     }
 
+    /** 删除地点：清空 items.location 并 bump rev，让删除也作为普通更新传播 */
     fun deleteLocation(name: String) {
         scope.launch {
             val d = db ?: return@launch
             val now = System.currentTimeMillis()
             d.withTransaction {
                 d.locationDao().delete(name)
-                d.itemDao().clearLocation(name, now)
+                d.itemDao().clearLocation(name, now, syncDeviceId)
             }
         }
     }
@@ -497,7 +760,8 @@ object ShiwuRepository {
 
     fun itemsOf(listId: Long): List<Item> = _items.value.filter { !it.deleted && it.listId == listId }
 
-    fun trashedItems(): List<Item> = _items.value.filter { it.deleted }
+    fun trashedItems(): List<Item> =
+        _items.value.filter { it.deleted && it.deletedAt != PURGED_DELETED_AT }
 
     fun itemById(id: Long): Item? = _items.value.firstOrNull { it.id == id }
 
@@ -517,8 +781,7 @@ object ShiwuRepository {
         shelfLifeDays: Int? = null,
         location: String? = null
     ): Long {
-        val id = globalId(++itemSeq)
-        persistCounters()
+        val id = nextItemId()
         val item = Item(
             id, name, category, price, purchaseDate, photos, note,
             productionDate = productionDate,
@@ -604,8 +867,26 @@ object ShiwuRepository {
         return true
     }
 
+    /**
+     * 彻底删除：不再物理删行，而是写一条 deleted 墓碑（deletedAt 用哨兵值，回收站不展示）。
+     * 这样同步快照里始终有该墓碑，远端旧墓碑不会把它复活；照片文件同时删除。
+     */
     fun purgeItem(id: Long) {
-        scope.launch { db?.itemDao()?.delete(id) }
+        val item = _items.value.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        val tombstone = item.copy(
+            deleted = true,
+            deletedAt = PURGED_DELETED_AT,
+            updatedAt = now,
+            rev = item.rev + 1,
+            updatedBy = syncDeviceId,
+            photos = emptyList()
+        )
+        scope.launch {
+            val d = db ?: return@launch
+            d.itemDao().upsert(tombstone.toEntity())
+            item.photos.forEach { path -> runCatching { File(path).delete() } }
+        }
     }
 
     // ---------- 心愿 CRUD ----------
@@ -618,8 +899,7 @@ object ShiwuRepository {
         savedAmount: Double,
         note: String
     ): Long {
-        val id = globalId(++wishSeq)
-        persistCounters()
+        val id = nextWishId()
         val wish = Wish(
             id, name, category, price, priority, savedAmount, note,
             listId = _currentListId.value, rev = 1, updatedBy = syncDeviceId
@@ -651,8 +931,7 @@ object ShiwuRepository {
     /** 标记心愿已购买：自动生成对应物品（同一清单） */
     fun markPurchased(wishId: Long): Long? {
         val wish = _wishes.value.firstOrNull { it.id == wishId } ?: return null
-        val itemId = globalId(++itemSeq)
-        persistCounters()
+        val itemId = nextItemId()
         val now = System.currentTimeMillis()
         val item = Item(
             id = itemId,
@@ -740,7 +1019,7 @@ object ShiwuRepository {
             put("app", "shiwu")
             put("version", 1)
             put("exportedAt", System.currentTimeMillis())
-            put("items", JSONArray(_items.value.map { it.toJson() }))
+            put("items", JSONArray(_items.value.filter { !it.deleted }.map { it.toJson() }))
             put("wishes", JSONArray(_wishes.value.map { it.toJson() }))
             put("lists", JSONArray(_lists.value.map { it.toJson() }))
             put("categories", JSONArray(_categories.value.map { it.toJson() }))
@@ -753,47 +1032,69 @@ object ShiwuRepository {
         val root = JSONObject(text)
         // 清单：旧备份无 lists 时全部归入当前清单；有则按 id 映射新建
         val listIdMap = HashMap<Long, Long>()
+        val itemIdMap = HashMap<Long, Long>()
         val listsToInsert = ArrayList<ListEntity>()
-        val larr = root.optJSONArray("lists")
-        if (larr != null && larr.length() > 0) {
-            for (i in 0 until larr.length()) {
-                val l = listFromJson(larr.getJSONObject(i))
-                val newId = globalId(++listSeq)
-                listsToInsert.add(l.copy(id = newId, rev = 1, updatedBy = syncDeviceId).toEntity())
-                listIdMap[l.id] = newId
-            }
-        }
         val itemsToInsert = ArrayList<ItemEntity>()
-        val arr = root.optJSONArray("items") ?: JSONArray()
-        for (i in 0 until arr.length()) {
-            val item = itemFromJson(arr.getJSONObject(i))
-            val targetList = listIdMap[item.listId] ?: _currentListId.value
-            itemsToInsert.add(
-                item.copy(
-                    id = globalId(++itemSeq),
-                    listId = targetList,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    rev = 1,
-                    updatedBy = syncDeviceId
-                ).toEntity()
-            )
-        }
         val wishesToInsert = ArrayList<WishEntity>()
-        val warr = root.optJSONArray("wishes") ?: JSONArray()
-        for (i in 0 until warr.length()) {
-            val wish = wishFromJson(warr.getJSONObject(i))
-            val targetList = listIdMap[wish.listId] ?: _currentListId.value
-            wishesToInsert.add(
-                wish.copy(
-                    id = globalId(++wishSeq),
-                    listId = targetList,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    rev = 1,
-                    updatedBy = syncDeviceId
-                ).toEntity()
-            )
+        allocateIds {
+            val larr = root.optJSONArray("lists")
+            if (larr != null && larr.length() > 0) {
+                for (i in 0 until larr.length()) {
+                    val l = listFromJson(larr.getJSONObject(i))
+                    val newId = nextListIdLocked()
+                    listsToInsert.add(
+                        l.copy(
+                            id = newId,
+                            rev = 1,
+                            updatedBy = syncDeviceId,
+                            syncedRev = 0,
+                            deleted = false,
+                            deletedAt = null
+                        ).toEntity()
+                    )
+                    listIdMap[l.id] = newId
+                }
+            }
+            val arr = root.optJSONArray("items") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val item = itemFromJson(arr.getJSONObject(i))
+                val targetList = listIdMap[item.listId] ?: _currentListId.value
+                val newId = nextItemIdLocked()
+                itemIdMap[item.id] = newId
+                itemsToInsert.add(
+                    item.copy(
+                        id = newId,
+                        listId = targetList,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                        rev = 1,
+                        updatedBy = syncDeviceId,
+                        syncedRev = 0,
+                        deleted = false,
+                        deletedAt = null
+                    ).toEntity()
+                )
+            }
+            val warr = root.optJSONArray("wishes") ?: JSONArray()
+            for (i in 0 until warr.length()) {
+                val wish = wishFromJson(warr.getJSONObject(i))
+                val targetList = listIdMap[wish.listId] ?: _currentListId.value
+                wishesToInsert.add(
+                    wish.copy(
+                        id = nextWishIdLocked(),
+                        listId = targetList,
+                        // 备份中的心愿可能引用旧 item id，必须映射到本次新分配的 item id
+                        purchasedItemId = wish.purchasedItemId?.let { itemIdMap[it] },
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                        rev = 1,
+                        updatedBy = syncDeviceId,
+                        syncedRev = 0,
+                        deleted = false,
+                        deletedAt = null
+                    ).toEntity()
+                )
+            }
         }
         val carr = root.optJSONArray("categories")
         val categoriesToInsert = ArrayList<CategoryEntity>()
@@ -828,7 +1129,6 @@ object ShiwuRepository {
                 existingLocations.add(it)
             }
         }
-        persistCounters()
         val imported = itemsToInsert.size + wishesToInsert.size
         scope.launch {
             val d = db ?: return@launch
@@ -909,73 +1209,74 @@ object ShiwuRepository {
         val existingCategories = _categories.value.map { it.name }.toMutableSet()
         val locationsToInsert = ArrayList<LocationEntity>()
         val existingLocations = _locations.value.toMutableSet()
-        rows.drop(1).forEach { row ->
-            fun col(name: String): String = idx[name]?.let { row.getOrNull(it)?.trim() ?: "" } ?: ""
-            val name = col("名称")
-            if (name.isEmpty()) return@forEach
-            val retired = col("状态") in setOf("已退役", "退役", "是", "true")
-            val retirement = if (retired) {
-                runCatching { LocalDate.parse(col("退役日期")).toEpochDay() }
-                    .getOrDefault(LocalDate.now().toEpochDay())
-            } else {
-                null
+        allocateIds {
+            rows.drop(1).forEach { row ->
+                fun col(name: String): String = idx[name]?.let { row.getOrNull(it)?.trim() ?: "" } ?: ""
+                val name = col("名称")
+                if (name.isEmpty()) return@forEach
+                val retired = col("状态") in setOf("已退役", "退役", "是", "true")
+                val retirement = if (retired) {
+                    runCatching { LocalDate.parse(col("退役日期")).toEpochDay() }
+                        .getOrDefault(LocalDate.now().toEpochDay())
+                } else {
+                    null
+                }
+                val productionDate = runCatching { LocalDate.parse(col("生产日期")).toEpochDay() }.getOrNull()
+                val expiryDate = runCatching { LocalDate.parse(col("到期日期")).toEpochDay() }.getOrNull()
+                val shelfLifeDays = col("保质期（天）").toIntOrNull()
+                // 三选二：任填两项则补齐第三项；不足两项视为无保质期信息
+                val (prod, exp, shelf) = when {
+                    productionDate != null && shelfLifeDays != null && shelfLifeDays > 0 ->
+                        Triple(
+                            productionDate,
+                            LocalDate.ofEpochDay(productionDate).plusDays(shelfLifeDays.toLong()).toEpochDay(),
+                            shelfLifeDays
+                        )
+                    productionDate != null && expiryDate != null && expiryDate > productionDate ->
+                        Triple(productionDate, expiryDate, (expiryDate - productionDate).toInt())
+                    expiryDate != null && shelfLifeDays != null && shelfLifeDays > 0 && expiryDate >= shelfLifeDays ->
+                        Triple(
+                            LocalDate.ofEpochDay(expiryDate).minusDays(shelfLifeDays.toLong()).toEpochDay(),
+                            expiryDate,
+                            shelfLifeDays
+                        )
+                    else -> Triple(null, null, null)
+                }
+                val photoPath = col("照片文件名").let { photoMap[it] }
+                val categoryName = col("分类").ifBlank { "未分类" }
+                if (categoryName !in existingCategories) {
+                    categoriesToInsert.add(Category(categoryName, defaultIconKeyForCategory(categoryName)).toEntity())
+                    existingCategories.add(categoryName)
+                }
+                val locationName = col("存放地点").ifBlank { null }
+                if (locationName != null && locationName !in existingLocations) {
+                    locationsToInsert.add(LocationEntity(locationName))
+                    existingLocations.add(locationName)
+                }
+                val item = Item(
+                    id = nextItemIdLocked(),
+                    name = name,
+                    category = categoryName,
+                    location = locationName,
+                    price = col("价格").toDoubleOrNull() ?: 0.0,
+                    purchaseDate = runCatching { LocalDate.parse(col("购入日期")).toEpochDay() }
+                        .getOrDefault(LocalDate.now().toEpochDay()),
+                    photos = if (photoPath != null) listOf(photoPath) else emptyList(),
+                    note = col("备注"),
+                    retired = retired,
+                    retirementDate = retirement,
+                    productionDate = prod,
+                    expiryDate = exp,
+                    shelfLifeDays = shelf,
+                    createdAt = now,
+                    updatedAt = now,
+                    listId = _currentListId.value,
+                    rev = 1,
+                    updatedBy = syncDeviceId
+                )
+                itemsToInsert.add(item.toEntity())
             }
-            val productionDate = runCatching { LocalDate.parse(col("生产日期")).toEpochDay() }.getOrNull()
-            val expiryDate = runCatching { LocalDate.parse(col("到期日期")).toEpochDay() }.getOrNull()
-            val shelfLifeDays = col("保质期（天）").toIntOrNull()
-            // 三选二：任填两项则补齐第三项；不足两项视为无保质期信息
-            val (prod, exp, shelf) = when {
-                productionDate != null && shelfLifeDays != null && shelfLifeDays > 0 ->
-                    Triple(
-                        productionDate,
-                        LocalDate.ofEpochDay(productionDate).plusDays(shelfLifeDays.toLong()).toEpochDay(),
-                        shelfLifeDays
-                    )
-                productionDate != null && expiryDate != null && expiryDate > productionDate ->
-                    Triple(productionDate, expiryDate, (expiryDate - productionDate).toInt())
-                expiryDate != null && shelfLifeDays != null && shelfLifeDays > 0 && expiryDate >= shelfLifeDays ->
-                    Triple(
-                        LocalDate.ofEpochDay(expiryDate).minusDays(shelfLifeDays.toLong()).toEpochDay(),
-                        expiryDate,
-                        shelfLifeDays
-                    )
-                else -> Triple(null, null, null)
-            }
-            val photoPath = col("照片文件名").let { photoMap[it] }
-            val categoryName = col("分类").ifBlank { "未分类" }
-            if (categoryName !in existingCategories) {
-                categoriesToInsert.add(Category(categoryName, defaultIconKeyForCategory(categoryName)).toEntity())
-                existingCategories.add(categoryName)
-            }
-            val locationName = col("存放地点").ifBlank { null }
-            if (locationName != null && locationName !in existingLocations) {
-                locationsToInsert.add(LocationEntity(locationName))
-                existingLocations.add(locationName)
-            }
-            val item = Item(
-                id = globalId(++itemSeq),
-                name = name,
-                category = categoryName,
-                location = locationName,
-                price = col("价格").toDoubleOrNull() ?: 0.0,
-                purchaseDate = runCatching { LocalDate.parse(col("购入日期")).toEpochDay() }
-                    .getOrDefault(LocalDate.now().toEpochDay()),
-                photos = if (photoPath != null) listOf(photoPath) else emptyList(),
-                note = col("备注"),
-                retired = retired,
-                retirementDate = retirement,
-                productionDate = prod,
-                expiryDate = exp,
-                shelfLifeDays = shelf,
-                createdAt = now,
-                updatedAt = now,
-                listId = _currentListId.value,
-                rev = 1,
-                updatedBy = syncDeviceId
-            )
-            itemsToInsert.add(item.toEntity())
         }
-        persistCounters()
         scope.launch {
             val d = db ?: return@launch
             d.withTransaction {
@@ -1009,22 +1310,63 @@ object ShiwuRepository {
         )
     }
 
-    /** 分配同步用新 ID（冲突副本等） */
-    fun allocSyncId(): Long {
-        val id = globalId(++itemSeq)
-        persistCounters()
-        return id
-    }
+    /** 分配同步用新 ID（物品冲突副本等）。各表使用各自序列，避免跨表主键碰撞。 */
+    fun allocSyncId(): Long = nextItemId()
 
-    /** 把合并结果整体写回本地库（REPLACE），UI 流自动刷新 */
-    suspend fun applySyncData(data: SyncData) {
+    fun allocSyncWishId(): Long = nextWishId()
+
+    fun allocSyncListId(): Long = nextListId()
+
+    /**
+     * 把合并结果写回本地库（REPLACE），UI 流自动刷新。
+     *
+     * expected 是本次同步下载/合并前读取的本地快照。写回前逐条用 DB 当前行与 expected 的
+     * rev/updatedBy/deleted 比对：若同步期间用户又编辑/新增/彻底删除过，立即抛错中止写回，
+     * 避免旧快照覆盖新编辑（远端已写成功，下一次同步会把本地新修改合并上传）。
+     */
+    suspend fun applySyncData(data: SyncData, expected: SyncData? = null) {
         val d = db ?: return
         d.withTransaction {
+            if (expected != null) {
+                val expectedLists = expected.lists.associateBy { it.id }
+                val expectedItems = expected.items.associateBy { it.id }
+                val expectedWishes = expected.wishes.associateBy { it.id }
+
+                data.lists.forEach { merged ->
+                    val e = expectedLists[merged.id] ?: return@forEach
+                    val cur = d.listDao().findById(merged.id)
+                    if (cur == null || cur.rev != e.rev || cur.updatedBy != e.updatedBy || cur.deleted != e.deleted) {
+                        throw IllegalStateException("同步期间本地清单有修改，已中止写回；请重试")
+                    }
+                }
+                data.items.forEach { merged ->
+                    val e = expectedItems[merged.id] ?: return@forEach
+                    val cur = d.itemDao().findById(merged.id)
+                    if (cur == null || cur.rev != e.rev || cur.updatedBy != e.updatedBy || cur.deleted != e.deleted) {
+                        throw IllegalStateException("同步期间本地物品有修改，已中止写回；请重试")
+                    }
+                }
+                data.wishes.forEach { merged ->
+                    val e = expectedWishes[merged.id] ?: return@forEach
+                    val cur = d.wishDao().findById(merged.id)
+                    if (cur == null || cur.rev != e.rev || cur.updatedBy != e.updatedBy || cur.deleted != e.deleted) {
+                        throw IllegalStateException("同步期间本地心愿有修改，已中止写回；请重试")
+                    }
+                }
+            }
             // 写回时把 syncedRev 推进到合并后的 rev，避免下次同步误判为「本地修改」
             if (data.lists.isNotEmpty()) d.listDao().upsertAll(data.lists.map { it.copy(syncedRev = it.rev).toEntity() })
             if (data.items.isNotEmpty()) d.itemDao().upsertAll(data.items.map { it.copy(syncedRev = it.rev).toEntity() })
             if (data.wishes.isNotEmpty()) d.wishDao().upsertAll(data.wishes.map { it.copy(syncedRev = it.rev).toEntity() })
             if (data.categories.isNotEmpty()) d.categoryDao().upsertAll(data.categories.map { it.toEntity() })
+        }
+        // 事务提交后再校正当前清单：远端可能删除了当前清单，或首次同步才采纳远端清单。
+        // _lists 的 Flow 可能尚未刷新，因此直接查库拿未删除清单。
+        val visibleLists = d.listDao().visibleLists()
+        if (visibleLists.none { it.id == _currentListId.value }) {
+            val nextId = visibleLists.firstOrNull()?.id ?: -1L
+            _currentListId.value = nextId
+            prefs?.edit()?.putLong("current_list_id", nextId)?.commit()
         }
     }
 
@@ -1039,38 +1381,40 @@ object ShiwuRepository {
         val cats = listOf("数码", "服饰", "阅读", "家居", "收藏", "影像", "其他")
         val locs = listOf("家", "车", "公司", null)
         val now = System.currentTimeMillis()
-        val newItems = (0 until itemCount).map { i ->
-            Item(
-                id = globalId(++itemSeq),
-                name = "${names[i % names.size]} #${i + 1}",
-                category = cats[i % cats.size],
-                price = (50 + (i * 37) % 3000) / 10.0,
-                purchaseDate = LocalDate.now().minusDays((i % 365).toLong()).toEpochDay(),
-                location = locs[i % locs.size],
-                note = "测试数据",
-                listId = listId,
-                rev = 1,
-                updatedBy = syncDeviceId,
-                createdAt = now,
-                updatedAt = now
-            )
+        val (newItems, newWishes) = allocateIds {
+            val items = (0 until itemCount).map { i ->
+                Item(
+                    id = nextItemIdLocked(),
+                    name = "${names[i % names.size]} #${i + 1}",
+                    category = cats[i % cats.size],
+                    price = (50 + (i * 37) % 3000) / 10.0,
+                    purchaseDate = LocalDate.now().minusDays((i % 365).toLong()).toEpochDay(),
+                    location = locs[i % locs.size],
+                    note = "测试数据",
+                    listId = listId,
+                    rev = 1,
+                    updatedBy = syncDeviceId,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+            val wishes = (0 until wishCount).map { i ->
+                Wish(
+                    id = nextWishIdLocked(),
+                    name = "心愿 ${names[i % names.size]} #${i + 1}",
+                    category = cats[i % cats.size],
+                    price = (200 + (i * 53) % 5000) / 10.0,
+                    priority = listOf("HIGH", "MEDIUM", "DREAM")[i % 3],
+                    note = "测试数据",
+                    listId = listId,
+                    rev = 1,
+                    updatedBy = syncDeviceId,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+            items to wishes
         }
-        val newWishes = (0 until wishCount).map { i ->
-            Wish(
-                id = globalId(++wishSeq),
-                name = "心愿 ${names[i % names.size]} #${i + 1}",
-                category = cats[i % cats.size],
-                price = (200 + (i * 53) % 5000) / 10.0,
-                priority = listOf("HIGH", "MEDIUM", "DREAM")[i % 3],
-                note = "测试数据",
-                listId = listId,
-                rev = 1,
-                updatedBy = syncDeviceId,
-                createdAt = now,
-                updatedAt = now
-            )
-        }
-        persistCounters()
         scope.launch {
             val d = db ?: return@launch
             d.withTransaction {
@@ -1079,6 +1423,26 @@ object ShiwuRepository {
             }
         }
     }
+}
+
+/** 全局 ID 低 40 位序列掩码 */
+internal const val SYNC_SEQ_MASK = 0xFFFFFFFFFFL
+
+/** 取全局 ID 的低 40 位本地序号 */
+internal fun syncSeqOf(globalId: Long): Long = globalId and SYNC_SEQ_MASK
+
+/** 是否为全局 ID（高 23 位设备号非 0；存量本地自增 ID 都小于 2^40） */
+internal fun isGlobalSyncId(id: Long): Boolean = (id ushr 40) != 0L
+
+/**
+ * 序列校准：取持久化值与 DB 中最大序号的较大者。
+ * [maxIdOrSeq] 既可以是全局 ID（会取低 40 位），也可以是已取过低 40 位的 DAO 结果。
+ * 用于 prefs/DeviceState 丢失或回退后避免从 1 开始撞已有 ID。
+ */
+internal fun calibrateSequence(current: Long, maxIdOrSeq: Long?): Long {
+    val base = current.coerceAtLeast(0L)
+    val fromDb = maxIdOrSeq?.let { syncSeqOf(it) } ?: 0L
+    return maxOf(base, fromDb)
 }
 
 private fun LocalDate.yearMonth(): YearMonth = YearMonth.of(year, monthValue)

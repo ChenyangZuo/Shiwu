@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+  云端备份规则（API < 31）。
+  deviceId / 序列分配器 / gid_migrated 存放于 noBackupFilesDir/device_state.json，
+  该目录不会被 Android 备份；不要把这些字段再写入 sharedpref，
+  也不要在 include 中包含 no_backup 目录，否则换机克隆会复用同一 deviceId。
+  昵称、主题、清单锁、WebDAV 配置等仍保留在 shiwu_prefs 中。
 -->
 <full-backup-content>
     <!--
