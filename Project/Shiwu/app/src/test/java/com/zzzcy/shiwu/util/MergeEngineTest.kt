@@ -7,6 +7,7 @@ import com.zzzcy.shiwu.data.SyncData
 import com.zzzcy.shiwu.data.Wish
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,10 +35,11 @@ class MergeEngineTest {
         rev: Long,
         by: String,
         deleted: Boolean = false,
+        listId: Long = 1L,
         syncedRev: Long = 0
     ) = Wish(
         id = id, name = name, category = "数码", price = 1.0,
-        listId = 1L, rev = rev, updatedBy = by, syncedRev = syncedRev, deleted = deleted
+        listId = listId, rev = rev, updatedBy = by, syncedRev = syncedRev, deleted = deleted
     )
 
     private fun list(
@@ -195,5 +197,146 @@ class MergeEngineTest {
         val r = merge(local, remote)
         assertEquals("心愿-改", r.wishes.first { it.id == 21L }.name)
         assertEquals(1, r.wishes.count { it.name.contains("（冲突副本）") })
+    }
+
+    // ---------- 首次同步 / 默认清单去重 / 报告语义 / 孤儿兜底 ----------
+
+    @Test
+    fun `首次同步：本地仅有空默认清单 → 本地清单转墓碑并采纳远端`() {
+        val local = SyncData(
+            lists = listOf(list(1, "我的物品", 1, "A")),
+            items = emptyList(),
+            wishes = emptyList(),
+            categories = emptyList()
+        )
+        val remote = SyncData(
+            lists = listOf(list(2, "我的物品", 3, "B")),
+            items = listOf(item(21, "远端物品", 1, "B", listId = 2L)),
+            wishes = emptyList(),
+            categories = emptyList()
+        )
+        val r = merge(local, remote)
+
+        val localList = r.lists.first { it.id == 1L }
+        assertTrue(localList.deleted)
+        assertEquals(2L, localList.rev)
+        assertEquals("DEVICE_TEST", localList.updatedBy)
+        assertNotNull(localList.deletedAt)
+
+        val activeDefaults = r.lists.filter { !it.deleted && it.name == "我的物品" }
+        assertEquals(1, activeDefaults.size)
+        assertEquals(2L, activeDefaults[0].id)
+        assertEquals(2L, r.items.first { it.id == 21L }.listId)
+        assertTrue(r.report.notes.any { it.contains("首次同步") })
+        assertEquals(1, r.report.deleted)
+    }
+
+    @Test
+    fun `两台设备各有一个我的物品 → 只保留内容多的一份，空清单转墓碑`() {
+        val sixty = (1..60).map { item(100L + it, "物品$it", 1, "A", listId = 1L) }
+        val local = SyncData(
+            lists = listOf(list(1, "我的物品", 1, "A")),
+            items = sixty,
+            wishes = emptyList(),
+            categories = emptyList()
+        )
+        val remote = SyncData(
+            lists = listOf(list(2, "我的物品", 1, "B")),
+            items = emptyList(),
+            wishes = emptyList(),
+            categories = emptyList()
+        )
+        val r = merge(local, remote)
+
+        val activeDefaults = r.lists.filter { !it.deleted && it.name == "我的物品" }
+        assertEquals(1, activeDefaults.size)
+        assertEquals(1L, activeDefaults[0].id)
+        assertTrue(r.lists.first { it.id == 2L }.deleted)
+        assertEquals(60, r.items.count { !it.deleted && it.listId == 1L })
+        assertEquals(1, r.report.deleted)
+        assertTrue(r.report.notes.any { it.contains("默认清单") })
+    }
+
+    @Test
+    fun `两端已同步且无变化 → 报告 added updated deleted conflicts 全为 0`() {
+        val local = SyncData(
+            lists = listOf(list(1, "我的物品", 3, "A", syncedRev = 3)),
+            items = listOf(item(11, "耳机", 3, "A", syncedRev = 3)),
+            wishes = listOf(wish(21, "心愿", 3, "A", syncedRev = 3)),
+            categories = listOf(Category("数码"))
+        )
+        val remote = SyncData(
+            lists = local.lists.map { it.copy() },
+            items = local.items.map { it.copy() },
+            wishes = local.wishes.map { it.copy() },
+            categories = local.categories.map { it.copy() }
+        )
+        val r = merge(local, remote)
+        assertEquals(0, r.report.added)
+        assertEquals(0, r.report.updated)
+        assertEquals(0, r.report.deleted)
+        assertEquals(0, r.report.conflicts)
+        assertTrue(r.report.notes.isEmpty())
+    }
+
+    @Test
+    fun `心愿所在清单被删除 → 心愿归入默认清单且 rev 加一`() {
+        val local = SyncData(
+            lists = listOf(
+                list(1, "我的物品", 1, "A"),
+                list(2, "旧清单", 1, "A")
+            ),
+            items = emptyList(),
+            wishes = listOf(wish(21, "机械键盘", 2, "A", listId = 2L)),
+            categories = emptyList()
+        )
+        val remote = SyncData(
+            lists = listOf(
+                list(1, "我的物品", 1, "A"),
+                list(2, "旧清单", 3, "B", deleted = true)
+            ),
+            items = emptyList(),
+            wishes = listOf(wish(21, "机械键盘", 2, "A", listId = 2L)),
+            categories = emptyList()
+        )
+        val r = merge(local, remote)
+
+        val orphan = r.wishes.first { it.id == 21L }
+        assertEquals(1L, orphan.listId)
+        assertEquals(3L, orphan.rev)
+        assertEquals("DEVICE_TEST", orphan.updatedBy)
+        assertTrue(r.report.notes.any { it.contains("心愿「机械键盘」所在清单已删除，已归入默认清单") })
+    }
+
+    @Test
+    fun `所有清单都被删除 → 自动创建默认清单并收纳活跃记录`() {
+        val local = SyncData(
+            lists = listOf(list(1, "我的物品", 2, "A", deleted = true)),
+            items = listOf(item(11, "耳机", 2, "A", listId = 1L)),
+            wishes = listOf(wish(21, "键盘", 2, "A", listId = 1L)),
+            categories = emptyList()
+        )
+        val remote = SyncData(
+            lists = listOf(list(1, "我的物品", 2, "A", deleted = true)),
+            items = listOf(item(11, "耳机", 2, "A", listId = 1L)),
+            wishes = listOf(wish(21, "键盘", 2, "A", listId = 1L)),
+            categories = emptyList()
+        )
+        val r = merge(local, remote)
+
+        val activeLists = r.lists.filter { !it.deleted }
+        assertEquals(1, activeLists.size)
+        val created = activeLists[0]
+        assertEquals("我的物品", created.name)
+        assertEquals(1L, created.rev)
+        assertEquals("DEVICE_TEST", created.updatedBy)
+
+        val item = r.items.first { it.id == 11L }
+        assertEquals(created.id, item.listId)
+        assertEquals(3L, item.rev)
+        val wish = r.wishes.first { it.id == 21L }
+        assertEquals(created.id, wish.listId)
+        assertEquals(3L, wish.rev)
+        assertTrue(r.report.notes.any { it.contains("自动创建默认清单") })
     }
 }
